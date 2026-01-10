@@ -1,6 +1,6 @@
 "use client";
 
-import { ScrollArea } from "@/components/ui/scroll-area";
+import * as React from "react";
 import { cn } from "@/lib/utils";
 
 interface Message {
@@ -11,11 +11,25 @@ interface Message {
 
 interface MessageListProps {
   messages: Message[];
+  isTyping?: boolean;
 }
 
-export function MessageList({ messages }: MessageListProps) {
+export function MessageList({ messages, isTyping }: MessageListProps) {
+  const scrollContainerRef = React.useRef<HTMLDivElement>(null);
+  const scrollRef = React.useRef<HTMLDivElement>(null);
+
+  // Auto-scroll to bottom when messages change
+  React.useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages]);
+
   return (
-    <ScrollArea className="flex-1 p-4">
+    <div
+      ref={scrollContainerRef}
+      className="flex-1 overflow-y-auto p-4"
+    >
       <div className="max-w-4xl mx-auto space-y-6">
         {messages.map((msg) => (
           <div
@@ -33,17 +47,20 @@ export function MessageList({ messages }: MessageListProps) {
                   : "bg-muted text-foreground"
               )}
             >
-              <div className="text-sm whitespace-pre-wrap">{msg.content}</div>
+              <div className="text-sm whitespace-pre-wrap">
+                {msg.content || (isTyping && msg.role === "assistant" ? (
+                  <span className="inline-flex gap-1">
+                    <span className="animate-pulse">.</span>
+                    <span className="animate-pulse delay-100">.</span>
+                    <span className="animate-pulse delay-200">.</span>
+                  </span>
+                ) : null)}
+              </div>
             </div>
           </div>
         ))}
-        {messages.length === 0 && (
-           <div className="flex flex-col items-center justify-center h-[50vh] text-muted-foreground text-center">
-              <h2 className="text-2xl font-bold mb-2">Secure Chat</h2>
-              <p>Select a model and start a private conversation.</p>
-           </div>
-        )}
+        <div ref={scrollRef} />
       </div>
-    </ScrollArea>
+    </div>
   );
 }

@@ -3,13 +3,15 @@
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { SendHorizontal } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface ChatInputProps {
   onSend: (message: string) => void;
   disabled?: boolean;
+  centered?: boolean;
 }
 
-export function ChatInput({ onSend, disabled }: ChatInputProps) {
+export function ChatInput({ onSend, disabled, centered }: ChatInputProps) {
   const [input, setInput] = React.useState("");
 
   const handleSend = () => {
@@ -27,7 +29,7 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
   };
 
   return (
-    <div className="p-4 border-t bg-background">
+    <div className={cn("p-4 bg-background", !centered && "border-t")}>
       <div className="relative flex items-center max-w-4xl mx-auto">
         <textarea
           value={input}
