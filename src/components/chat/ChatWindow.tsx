@@ -1,11 +1,12 @@
 "use client";
 
-import * as React from "react";
-import { MessageList } from "./MessageList";
+import { useCallback, useEffect, useState } from "react";
+import { useAuth, useUser } from "@clerk/nextjs";
+
 import { ChatInput } from "./ChatInput";
+import { MessageList } from "./MessageList";
 import { ModelSelector } from "./ModelSelector";
 import { useApi } from "@/lib/api";
-import { useAuth, useUser } from "@clerk/nextjs";
 
 interface Message {
   id: string;
@@ -18,30 +19,48 @@ interface Model {
   name: string;
 }
 
-export function ChatWindow() {
+interface ModelHeaderProps {
+  models: Model[];
+  selectedModel: string;
+  onModelChange: (model: string) => void;
+  disabled: boolean;
+}
+
+function ModelHeader({ models, selectedModel, onModelChange, disabled }: ModelHeaderProps): React.ReactElement {
+  return (
+    <div className="flex items-center gap-2 p-2 border-b">
+      <span className="text-sm text-muted-foreground">Model:</span>
+      <ModelSelector
+        models={models}
+        selectedModel={selectedModel}
+        onModelChange={onModelChange}
+        disabled={disabled}
+      />
+    </div>
+  );
+}
+
+export function ChatWindow(): React.ReactElement {
   const api = useApi();
   const { getToken } = useAuth();
   const { user } = useUser();
-  const [messages, setMessages] = React.useState<Message[]>([]);
-  const [sessionId, setSessionId] = React.useState<string | null>(null);
-  const [isTyping, setIsTyping] = React.useState(false);
-  const [models, setModels] = React.useState<Model[]>([]);
-  const [selectedModel, setSelectedModel] = React.useState<string>("");
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [isTyping, setIsTyping] = useState(false);
+  const [models, setModels] = useState<Model[]>([]);
+  const [selectedModel, setSelectedModel] = useState<string>("");
 
-  // Check if this is the initial state (no messages yet)
   const isInitialState = messages.length === 0;
 
-  // Load models when user changes (sign in/out/switch account)
-  React.useEffect(() => {
-    const loadModels = async () => {
+  useEffect(() => {
+    async function loadModels(): Promise<void> {
       if (!user) {
-        // Not signed in, clear models
         setModels([]);
         setSelectedModel("");
         return;
       }
       try {
-        const data: Model[] = await api.get("/chat/models");
+        const data = await api.get("/chat/models") as Model[];
         setModels(data);
         if (data.length > 0) {
           setSelectedModel(data[0].id);
@@ -49,30 +68,28 @@ export function ChatWindow() {
       } catch (err) {
         console.error("Failed to fetch models:", err);
       }
-    };
+    }
     loadModels();
   }, [user?.id, api]);
 
-  // Listen for new chat event
-  React.useEffect(() => {
-    const handleNewChat = () => {
+  useEffect(() => {
+    function handleNewChat(): void {
       setMessages([]);
       setSessionId(null);
-    };
+    }
     window.addEventListener("newChat", handleNewChat);
     return () => window.removeEventListener("newChat", handleNewChat);
   }, []);
 
-  // Listen for session selection event
-  React.useEffect(() => {
-    const handleSelectSession = async (e: Event) => {
+  useEffect(() => {
+    async function handleSelectSession(e: Event): Promise<void> {
       const customEvent = e as CustomEvent<{ sessionId: string }>;
       const selectedSessionId = customEvent.detail.sessionId;
       setSessionId(selectedSessionId);
 
       try {
-        const data = await api.get(`/chat/sessions/${selectedSessionId}/messages`);
-        const loadedMessages: Message[] = data.map((msg: { id: string; role: string; content: string }) => ({
+        const data = await api.get(`/chat/sessions/${selectedSessionId}/messages`) as Array<{ id: string; role: string; content: string }>;
+        const loadedMessages: Message[] = data.map((msg) => ({
           id: msg.id,
           role: msg.role as "user" | "assistant",
           content: msg.content,
@@ -81,24 +98,19 @@ export function ChatWindow() {
       } catch (err) {
         console.error("Failed to load messages:", err);
       }
-    };
+    }
 
     window.addEventListener("selectSession", handleSelectSession);
     return () => window.removeEventListener("selectSession", handleSelectSession);
   }, [api]);
 
-  const handleSend = async (content: string) => {
+  const handleSend = useCallback(async function(content: string): Promise<void> {
     const tempId = Date.now().toString();
-    const newMessage: Message = { id: tempId, role: "user", content };
-    setMessages((prev) => [...prev, newMessage]);
-    setIsTyping(true);
-
-    // Create placeholder for streaming response
     const assistantId = (Date.now() + 1).toString();
-    setMessages((prev) => [
-      ...prev,
-      { id: assistantId, role: "assistant", content: "" },
-    ]);
+
+    setMessages((prev) => [...prev, { id: tempId, role: "user", content }]);
+    setMessages((prev) => [...prev, { id: assistantId, role: "assistant", content: "" }]);
+    setIsTyping(true);
 
     try {
       const token = await getToken();
@@ -122,12 +134,11 @@ export function ChatWindow() {
       }
 
       const reader = response.body?.getReader();
-      const decoder = new TextDecoder();
-
       if (!reader) {
         throw new Error("No response body");
       }
 
+      const decoder = new TextDecoder();
       let fullContent = "";
 
       while (true) {
@@ -138,31 +149,24 @@ export function ChatWindow() {
         const lines = chunk.split("\n");
 
         for (const line of lines) {
-          if (line.startsWith("data: ")) {
-            try {
-              const data = JSON.parse(line.slice(6));
+          if (!line.startsWith("data: ")) continue;
 
-              if (data.type === "session") {
-                if (!sessionId) {
-                  setSessionId(data.session_id);
-                  // Notify layout to refresh sessions
-                  window.dispatchEvent(new CustomEvent("sessionUpdated"));
-                }
-              } else if (data.type === "content") {
-                fullContent += data.content;
-                setMessages((prev) =>
-                  prev.map((msg) =>
-                    msg.id === assistantId
-                      ? { ...msg, content: fullContent }
-                      : msg
-                  )
-                );
-              } else if (data.type === "done") {
-                // Streaming complete
-              }
-            } catch {
-              // Ignore parse errors for incomplete chunks
+          try {
+            const data = JSON.parse(line.slice(6));
+
+            if (data.type === "session" && !sessionId) {
+              setSessionId(data.session_id);
+              window.dispatchEvent(new CustomEvent("sessionUpdated"));
+            } else if (data.type === "content") {
+              fullContent += data.content;
+              setMessages((prev) =>
+                prev.map((msg) =>
+                  msg.id === assistantId ? { ...msg, content: fullContent } : msg
+                )
+              );
             }
+          } catch {
+            // Ignore parse errors for incomplete chunks
           }
         }
       }
@@ -171,29 +175,23 @@ export function ChatWindow() {
       const errorMessage = err instanceof Error ? err.message : "Failed to send message.";
       setMessages((prev) =>
         prev.map((msg) =>
-          msg.id === assistantId
-            ? { ...msg, content: `Error: ${errorMessage}` }
-            : msg
+          msg.id === assistantId ? { ...msg, content: `Error: ${errorMessage}` } : msg
         )
       );
     } finally {
       setIsTyping(false);
     }
-  };
+  }, [getToken, sessionId, selectedModel]);
 
-  // Centered initial view
   if (isInitialState) {
     return (
       <div className="flex flex-col h-full">
-        <div className="flex items-center gap-2 p-2 border-b">
-          <span className="text-sm text-muted-foreground">Model:</span>
-          <ModelSelector
-            models={models}
-            selectedModel={selectedModel}
-            onModelChange={setSelectedModel}
-            disabled={isTyping}
-          />
-        </div>
+        <ModelHeader
+          models={models}
+          selectedModel={selectedModel}
+          onModelChange={setSelectedModel}
+          disabled={isTyping}
+        />
 
         <div className="flex-1 flex flex-col items-center justify-center p-4">
           <div className="text-center mb-8">
@@ -211,18 +209,14 @@ export function ChatWindow() {
     );
   }
 
-  // Conversation view
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center gap-2 p-2 border-b">
-        <span className="text-sm text-muted-foreground">Model:</span>
-        <ModelSelector
-          models={models}
-          selectedModel={selectedModel}
-          onModelChange={setSelectedModel}
-          disabled={isTyping}
-        />
-      </div>
+      <ModelHeader
+        models={models}
+        selectedModel={selectedModel}
+        onModelChange={setSelectedModel}
+        disabled={isTyping}
+      />
       <MessageList messages={messages} isTyping={isTyping} />
       <ChatInput onSend={handleSend} disabled={isTyping} />
     </div>
