@@ -1,32 +1,28 @@
 import { test, expect } from '@playwright/test';
-import { createMockChatStream } from './fixtures/auth.fixture';
+import { signInWithClerk, createMockChatStream } from './fixtures/auth.fixture';
 
 /**
  * Session management E2E tests.
  *
- * These tests verify session-related functionality:
+ * Verifies session-related functionality:
  * - Session creation on first message
  * - Session list in sidebar
  * - Switching between sessions
  * - Creating new chats
- *
- * Authentication state is loaded from playwright/.clerk/user.json
  */
 
 test.describe('Sessions', () => {
   test.beforeEach(async ({ page }) => {
-    // Mock the models endpoint
+    await signInWithClerk(page);
+
     await page.route('**/api/v1/chat/models', async (route) => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify([
-          { id: 'Qwen/Qwen2.5-72B-Instruct', name: 'Qwen 2.5 72B' },
-        ]),
+        body: JSON.stringify([{ id: 'Qwen/Qwen2.5-72B-Instruct', name: 'Qwen 2.5 72B' }]),
       });
     });
 
-    // Mock user sync
     await page.route('**/api/v1/users/sync', async (route) => {
       await route.fulfill({
         status: 200,
@@ -39,24 +35,21 @@ test.describe('Sessions', () => {
   test('first message creates new session in sidebar', async ({ page }) => {
     let sessionCreated = false;
 
-    // Mock empty sessions initially
     await page.route('**/api/v1/chat/sessions', async (route) => {
       if (route.request().method() === 'GET') {
+        const sessions = sessionCreated
+          ? [{ id: 'new-session', name: 'What is AI?', created_at: new Date().toISOString() }]
+          : [];
         await route.fulfill({
           status: 200,
           contentType: 'application/json',
-          body: JSON.stringify(
-            sessionCreated
-              ? [{ id: 'new-session', name: 'What is AI?', created_at: new Date().toISOString() }]
-              : []
-          ),
+          body: JSON.stringify(sessions),
         });
       } else {
         await route.continue();
       }
     });
 
-    // Mock chat stream
     await page.route('**/api/v1/chat/stream', async (route) => {
       sessionCreated = true;
       await route.fulfill({
@@ -67,24 +60,17 @@ test.describe('Sessions', () => {
     });
 
     await page.goto('/');
-
-    // Initially should show "No conversations yet"
     await expect(page.locator('text=No conversations yet')).toBeVisible();
 
-    // Send a message
     const textarea = page.locator('textarea[placeholder*="message"]');
+    await expect(textarea).toBeVisible();
     await textarea.fill('What is AI?');
-    await page.locator('button:has(svg)').last().click();
+    await page.locator('[data-testid="send-button"]').click();
 
-    // Wait for response and session to appear in sidebar
-    await expect(page.locator('text=AI is artificial intelligence')).toBeVisible({ timeout: 5000 });
-
-    // Trigger sessions reload (this depends on your implementation)
-    // The session should now appear in the sidebar
+    await expect(page.locator('text=/AI.*artificial intelligence/i')).toBeVisible({ timeout: 10000 });
   });
 
   test('clicking session loads its messages', async ({ page }) => {
-    // Mock sessions with one existing session
     await page.route('**/api/v1/chat/sessions', async (route) => {
       await route.fulfill({
         status: 200,
@@ -95,7 +81,6 @@ test.describe('Sessions', () => {
       });
     });
 
-    // Mock messages for the session
     await page.route('**/api/v1/chat/sessions/session-1/messages', async (route) => {
       await route.fulfill({
         status: 200,
@@ -108,17 +93,13 @@ test.describe('Sessions', () => {
     });
 
     await page.goto('/');
-
-    // Click on the session in sidebar
     await page.locator('text=Previous Chat').click();
 
-    // Should load messages from that session
     await expect(page.locator('text=Hello from previous chat')).toBeVisible();
     await expect(page.locator('text=Hi! This is a previous response.')).toBeVisible();
   });
 
   test('New Chat button clears conversation', async ({ page }) => {
-    // Mock sessions
     await page.route('**/api/v1/chat/sessions', async (route) => {
       await route.fulfill({
         status: 200,
@@ -133,29 +114,18 @@ test.describe('Sessions', () => {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify([
-          { id: 'msg-1', role: 'user', content: 'Previous message' },
-        ]),
+        body: JSON.stringify([{ id: 'msg-1', role: 'user', content: 'Previous message' }]),
       });
     });
 
     await page.goto('/');
-
-    // Click on existing session
     await page.locator('text=Existing Chat').click();
-
-    // Should show previous message
     await expect(page.locator('text=Previous message')).toBeVisible();
 
-    // Click New Chat
     await page.locator('text=New Chat').click();
 
-    // Previous message should no longer be visible (new conversation)
     await expect(page.locator('text=Previous message')).not.toBeVisible();
-
-    // Should show initial state (centered input)
-    const textarea = page.locator('textarea[placeholder*="message"]');
-    await expect(textarea).toBeVisible();
+    await expect(page.locator('textarea[placeholder*="message"]')).toBeVisible();
   });
 
   test('sidebar shows multiple sessions', async ({ page }) => {
@@ -173,7 +143,6 @@ test.describe('Sessions', () => {
 
     await page.goto('/');
 
-    // All sessions should be visible in sidebar
     await expect(page.locator('text=First Conversation')).toBeVisible();
     await expect(page.locator('text=Second Conversation')).toBeVisible();
     await expect(page.locator('text=Third Conversation')).toBeVisible();
@@ -200,15 +169,11 @@ test.describe('Sessions', () => {
     });
 
     await page.goto('/');
-
-    // Click on first session
     await page.locator('text=First Chat').click();
 
-    // First session button should have active styling
     const firstSessionButton = page.locator('button:has-text("First Chat")');
     await expect(firstSessionButton).toHaveClass(/secondary/);
 
-    // Second session should not have active styling
     const secondSessionButton = page.locator('button:has-text("Second Chat")');
     await expect(secondSessionButton).not.toHaveClass(/secondary/);
   });

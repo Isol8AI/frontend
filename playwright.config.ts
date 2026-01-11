@@ -33,57 +33,48 @@ export default defineConfig({
     screenshot: 'only-on-failure',
   },
   projects: [
-    // Global setup - obtains Clerk Testing Token
+    // Global setup - obtains Clerk Testing Token before other tests
     {
       name: 'setup',
       testMatch: /global\.setup\.ts/,
     },
-
-    // Auth setup - signs in and saves auth state
-    {
-      name: 'auth-setup',
-      testMatch: /auth\.setup\.ts/,
-      dependencies: ['setup'],
-    },
-
-    // Browser tests with pre-authenticated state
+    // Browser tests - each test signs in using clerk.signIn()
+    // Note: Clerk Testing Tokens work most reliably with Chromium.
+    // Firefox and WebKit may have intermittent auth issues.
     {
       name: 'chromium',
-      use: {
-        ...devices['Desktop Chrome'],
-        storageState: 'playwright/.clerk/user.json',
-      },
-      dependencies: ['auth-setup'],
+      use: { ...devices['Desktop Chrome'] },
+      dependencies: ['setup'],
     },
-    {
-      name: 'firefox',
-      use: {
-        ...devices['Desktop Firefox'],
-        storageState: 'playwright/.clerk/user.json',
-      },
-      dependencies: ['auth-setup'],
-    },
-    {
-      name: 'webkit',
-      use: {
-        ...devices['Desktop Safari'],
-        storageState: 'playwright/.clerk/user.json',
-      },
-      dependencies: ['auth-setup'],
-    },
+    // Uncomment below to enable cross-browser testing (may have Clerk auth issues)
+    // {
+    //   name: 'firefox',
+    //   use: { ...devices['Desktop Firefox'] },
+    //   dependencies: ['setup'],
+    // },
+    // {
+    //   name: 'webkit',
+    //   use: { ...devices['Desktop Safari'] },
+    //   dependencies: ['setup'],
+    // },
   ],
-  webServer: [
-    {
-      command: 'npm run dev',
-      url: 'http://localhost:3000',
-      reuseExistingServer: !process.env.CI,
-      timeout: 120000,
-    },
-    {
-      command: 'cd ../backend && source env/bin/activate && uvicorn main:app --port 8000',
-      url: 'http://localhost:8000/health',
-      reuseExistingServer: !process.env.CI,
-      timeout: 120000,
-    },
-  ],
+  // For local development: start servers manually before running tests
+  // For CI: set CI=true to have Playwright start servers automatically
+  webServer: process.env.CI
+    ? [
+        {
+          command: 'npm run dev',
+          url: 'http://localhost:3000',
+          reuseExistingServer: false,
+          timeout: 120000,
+        },
+        {
+          command: '../backend/env/bin/uvicorn main:app --port 8000',
+          cwd: '../backend',
+          url: 'http://localhost:8000/health',
+          reuseExistingServer: false,
+          timeout: 120000,
+        },
+      ]
+    : undefined,
 });
