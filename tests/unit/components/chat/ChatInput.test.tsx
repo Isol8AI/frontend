@@ -7,119 +7,123 @@ describe('ChatInput', () => {
   const mockOnSend = vi.fn();
 
   beforeEach(() => {
-    mockOnSend.mockClear();
+    vi.clearAllMocks();
   });
 
-  it('renders textarea and send button', () => {
-    render(<ChatInput onSend={mockOnSend} />);
+  function getTextarea(): HTMLElement {
+    return screen.getByPlaceholderText('Type a message...');
+  }
 
-    expect(screen.getByPlaceholderText('Type a message...')).toBeInTheDocument();
-    expect(screen.getByRole('button')).toBeInTheDocument();
+  function getSendButton(): HTMLElement {
+    return screen.getByRole('button');
+  }
+
+  describe('rendering', () => {
+    it('renders textarea and send button', () => {
+      render(<ChatInput onSend={mockOnSend} />);
+
+      expect(getTextarea()).toBeInTheDocument();
+      expect(getSendButton()).toBeInTheDocument();
+    });
+
+    it('applies border-t class when not centered', () => {
+      const { container } = render(<ChatInput onSend={mockOnSend} />);
+      expect(container.firstChild).toHaveClass('border-t');
+    });
+
+    it('omits border-t class when centered', () => {
+      const { container } = render(<ChatInput onSend={mockOnSend} centered />);
+      expect(container.firstChild).not.toHaveClass('border-t');
+    });
   });
 
-  it('calls onSend with input value on button click', async () => {
-    const user = userEvent.setup();
-    render(<ChatInput onSend={mockOnSend} />);
+  describe('sending messages', () => {
+    it('calls onSend with input value on button click', async () => {
+      const user = userEvent.setup();
+      render(<ChatInput onSend={mockOnSend} />);
 
-    const textarea = screen.getByPlaceholderText('Type a message...');
-    await user.type(textarea, 'Hello world');
-    await user.click(screen.getByRole('button'));
+      await user.type(getTextarea(), 'Hello world');
+      await user.click(getSendButton());
 
-    expect(mockOnSend).toHaveBeenCalledWith('Hello world');
+      expect(mockOnSend).toHaveBeenCalledWith('Hello world');
+    });
+
+    it('clears input after send', async () => {
+      const user = userEvent.setup();
+      render(<ChatInput onSend={mockOnSend} />);
+
+      const textarea = getTextarea();
+      await user.type(textarea, 'Test message');
+      await user.click(getSendButton());
+
+      expect(textarea).toHaveValue('');
+    });
+
+    it('sends on Enter key', async () => {
+      const user = userEvent.setup();
+      render(<ChatInput onSend={mockOnSend} />);
+
+      await user.type(getTextarea(), 'Enter test');
+      await user.keyboard('{Enter}');
+
+      expect(mockOnSend).toHaveBeenCalledWith('Enter test');
+    });
+
+    it('does not send on Shift+Enter', async () => {
+      const user = userEvent.setup();
+      render(<ChatInput onSend={mockOnSend} />);
+
+      await user.type(getTextarea(), 'Shift enter test');
+      await user.keyboard('{Shift>}{Enter}{/Shift}');
+
+      expect(mockOnSend).not.toHaveBeenCalled();
+    });
   });
 
-  it('clears input after send', async () => {
-    const user = userEvent.setup();
-    render(<ChatInput onSend={mockOnSend} />);
+  describe('validation', () => {
+    it('does not send when input is empty', async () => {
+      const user = userEvent.setup();
+      render(<ChatInput onSend={mockOnSend} />);
 
-    const textarea = screen.getByPlaceholderText('Type a message...');
-    await user.type(textarea, 'Test message');
-    await user.click(screen.getByRole('button'));
+      await user.click(getSendButton());
 
-    expect(textarea).toHaveValue('');
+      expect(mockOnSend).not.toHaveBeenCalled();
+    });
+
+    it('does not send when input is only whitespace', async () => {
+      const user = userEvent.setup();
+      render(<ChatInput onSend={mockOnSend} />);
+
+      await user.type(getTextarea(), '   ');
+      await user.click(getSendButton());
+
+      expect(mockOnSend).not.toHaveBeenCalled();
+    });
   });
 
-  it('calls onSend on Enter key (not Shift+Enter)', async () => {
-    const user = userEvent.setup();
-    render(<ChatInput onSend={mockOnSend} />);
+  describe('disabled state', () => {
+    it('disables textarea when disabled', () => {
+      render(<ChatInput onSend={mockOnSend} disabled />);
+      expect(getTextarea()).toBeDisabled();
+    });
 
-    const textarea = screen.getByPlaceholderText('Type a message...');
-    await user.type(textarea, 'Enter test');
-    await user.keyboard('{Enter}');
+    it('disables send button when disabled', () => {
+      render(<ChatInput onSend={mockOnSend} disabled />);
+      expect(getSendButton()).toBeDisabled();
+    });
 
-    expect(mockOnSend).toHaveBeenCalledWith('Enter test');
-  });
+    it('disables send button when input is empty', () => {
+      render(<ChatInput onSend={mockOnSend} />);
+      expect(getSendButton()).toBeDisabled();
+    });
 
-  it('does not call onSend on Shift+Enter', async () => {
-    const user = userEvent.setup();
-    render(<ChatInput onSend={mockOnSend} />);
+    it('enables send button when input has content', async () => {
+      const user = userEvent.setup();
+      render(<ChatInput onSend={mockOnSend} />);
 
-    const textarea = screen.getByPlaceholderText('Type a message...');
-    await user.type(textarea, 'Shift enter test');
-    await user.keyboard('{Shift>}{Enter}{/Shift}');
+      await user.type(getTextarea(), 'Test');
 
-    expect(mockOnSend).not.toHaveBeenCalled();
-  });
-
-  it('does not call onSend when input is empty', async () => {
-    const user = userEvent.setup();
-    render(<ChatInput onSend={mockOnSend} />);
-
-    await user.click(screen.getByRole('button'));
-
-    expect(mockOnSend).not.toHaveBeenCalled();
-  });
-
-  it('does not call onSend when input is only whitespace', async () => {
-    const user = userEvent.setup();
-    render(<ChatInput onSend={mockOnSend} />);
-
-    const textarea = screen.getByPlaceholderText('Type a message...');
-    await user.type(textarea, '   ');
-    await user.click(screen.getByRole('button'));
-
-    expect(mockOnSend).not.toHaveBeenCalled();
-  });
-
-  it('disables textarea when disabled prop is true', () => {
-    render(<ChatInput onSend={mockOnSend} disabled />);
-
-    expect(screen.getByPlaceholderText('Type a message...')).toBeDisabled();
-  });
-
-  it('disables send button when disabled prop is true', () => {
-    render(<ChatInput onSend={mockOnSend} disabled />);
-
-    expect(screen.getByRole('button')).toBeDisabled();
-  });
-
-  it('disables send button when input is empty', () => {
-    render(<ChatInput onSend={mockOnSend} />);
-
-    expect(screen.getByRole('button')).toBeDisabled();
-  });
-
-  it('enables send button when input has content', async () => {
-    const user = userEvent.setup();
-    render(<ChatInput onSend={mockOnSend} />);
-
-    const textarea = screen.getByPlaceholderText('Type a message...');
-    await user.type(textarea, 'Test');
-
-    expect(screen.getByRole('button')).not.toBeDisabled();
-  });
-
-  it('applies border-t class when not centered', () => {
-    const { container } = render(<ChatInput onSend={mockOnSend} />);
-
-    const wrapper = container.firstChild;
-    expect(wrapper).toHaveClass('border-t');
-  });
-
-  it('does not apply border-t class when centered', () => {
-    const { container } = render(<ChatInput onSend={mockOnSend} centered />);
-
-    const wrapper = container.firstChild;
-    expect(wrapper).not.toHaveClass('border-t');
+      expect(getSendButton()).not.toBeDisabled();
+    });
   });
 });

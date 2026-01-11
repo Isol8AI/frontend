@@ -1,18 +1,17 @@
 import { test, expect } from '@playwright/test';
-import { signInWithClerk, createMockChatStream } from './fixtures/auth.fixture';
+import { signInWithClerk, createMockChatStream, setupOrganizationMocks } from './fixtures/auth.fixture.js';
 
-/**
- * Chat E2E tests.
- *
- * Verifies core chat functionality:
- * - Sending messages and receiving streaming responses
- * - Model selection
- * - Keyboard shortcuts (Enter to send, Shift+Enter for newline)
- */
+const DEFAULT_TIMEOUT = 10000;
+
+const SSE_HEADERS = {
+  'Content-Type': 'text/event-stream',
+  'Cache-Control': 'no-cache',
+  'Connection': 'keep-alive',
+};
 
 test.describe('Chat', () => {
   test.beforeEach(async ({ page }) => {
-    await signInWithClerk(page);
+    await setupOrganizationMocks(page);
 
     await page.route('**/api/v1/chat/models', async (route) => {
       await route.fulfill({
@@ -44,62 +43,64 @@ test.describe('Chat', () => {
         await route.continue();
       }
     });
+
+    await signInWithClerk(page);
   });
 
-  test('can send a message and receive streaming response', async ({ page }) => {
+  test('sends message and receives streaming response', async ({ page }) => {
     await page.route('**/api/v1/chat/stream', async (route) => {
       await route.fulfill({
         status: 200,
-        contentType: 'text/event-stream',
+        headers: SSE_HEADERS,
         body: createMockChatStream(['Hello', '! I am ', 'an AI assistant.']),
       });
     });
 
     await page.goto('/');
+    await page.waitForLoadState('networkidle');
 
     const textarea = page.locator('textarea[placeholder*="message"]');
     await expect(textarea).toBeVisible();
     await textarea.fill('Hello, how are you?');
-
     await page.locator('[data-testid="send-button"]').click();
 
-    await expect(page.locator('text=Hello, how are you?')).toBeVisible({ timeout: 10000 });
-    await expect(page.locator('text=/Hello.*AI assistant/i')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('text=Hello, how are you?')).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+    await expect(page.locator('text=/Hello.*AI assistant/i')).toBeVisible({ timeout: DEFAULT_TIMEOUT });
   });
 
-  test('message input clears after sending', async ({ page }) => {
+  test('clears input after sending', async ({ page }) => {
     await page.route('**/api/v1/chat/stream', async (route) => {
       await route.fulfill({
         status: 200,
-        contentType: 'text/event-stream',
+        headers: SSE_HEADERS,
         body: createMockChatStream(['Response']),
       });
     });
 
     await page.goto('/');
+    await page.waitForLoadState('networkidle');
 
     const textarea = page.locator('textarea[placeholder*="message"]');
     await expect(textarea).toBeVisible();
     await textarea.fill('Test message');
     await page.locator('[data-testid="send-button"]').click();
 
-    await expect(page.locator('text=Response')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('text=Response')).toBeVisible({ timeout: DEFAULT_TIMEOUT });
     await expect(textarea).toHaveValue('');
   });
 
-  test('can select different models', async ({ page }) => {
+  test('allows model selection', async ({ page }) => {
     await page.goto('/');
 
     const modelButton = page.locator('button:has-text("Qwen")').first();
     await expect(modelButton).toBeVisible();
     await modelButton.click();
-
     await page.locator('text=Llama 3.3 70B').click();
 
     await expect(page.locator('button:has-text("Llama")')).toBeVisible();
   });
 
-  test('shows error message on stream failure', async ({ page }) => {
+  test('handles stream failure gracefully', async ({ page }) => {
     await page.route('**/api/v1/chat/stream', async (route) => {
       await route.fulfill({
         status: 500,
@@ -114,24 +115,24 @@ test.describe('Chat', () => {
     await textarea.fill('Test message');
     await page.locator('[data-testid="send-button"]').click();
 
-    // Error handling varies by implementation - check for error text or graceful degradation
     await expect(page.locator('text=/error/i'))
       .toBeVisible({ timeout: 5000 })
       .catch(() => {
-        console.log('Error handling may show toast or other UI element');
+        // Error handling may show toast or other UI element
       });
   });
 
-  test('Enter key sends message', async ({ page }) => {
+  test('sends on Enter key', async ({ page }) => {
     await page.route('**/api/v1/chat/stream', async (route) => {
       await route.fulfill({
         status: 200,
-        contentType: 'text/event-stream',
+        headers: SSE_HEADERS,
         body: createMockChatStream(['Response']),
       });
     });
 
     await page.goto('/');
+    await page.waitForLoadState('networkidle');
 
     const textarea = page.locator('textarea[placeholder*="message"]');
     await textarea.fill('Hello via Enter');
@@ -140,7 +141,7 @@ test.describe('Chat', () => {
     await expect(page.locator('text=Hello via Enter')).toBeVisible();
   });
 
-  test('Shift+Enter does not send message', async ({ page }) => {
+  test('does not send on Shift+Enter', async ({ page }) => {
     await page.goto('/');
 
     const textarea = page.locator('textarea[placeholder*="message"]');

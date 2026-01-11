@@ -13,110 +13,75 @@ describe('ModelSelector', () => {
   const mockOnModelChange = vi.fn();
 
   beforeEach(() => {
-    mockOnModelChange.mockClear();
+    vi.clearAllMocks();
   });
 
-  it('renders selected model name', () => {
+  function renderSelector(props: Partial<Parameters<typeof ModelSelector>[0]> = {}): void {
     render(
       <ModelSelector
         models={mockModels}
         selectedModel="model-1"
         onModelChange={mockOnModelChange}
+        {...props}
       />
     );
+  }
 
-    expect(screen.getByText('Test Model 1')).toBeInTheDocument();
-  });
+  describe('rendering', () => {
+    it('renders selected model name', () => {
+      renderSelector();
+      expect(screen.getByText('Test Model 1')).toBeInTheDocument();
+    });
 
-  it('shows "Select Model" when no match found', () => {
-    render(
-      <ModelSelector
-        models={mockModels}
-        selectedModel="nonexistent"
-        onModelChange={mockOnModelChange}
-      />
-    );
+    it('shows placeholder when no match found', () => {
+      renderSelector({ selectedModel: 'nonexistent' });
+      expect(screen.getByText('Select Model')).toBeInTheDocument();
+    });
 
-    expect(screen.getByText('Select Model')).toBeInTheDocument();
-  });
+    it('shows placeholder when models array is empty', () => {
+      renderSelector({ models: [], selectedModel: '' });
+      expect(screen.getByText('Select Model')).toBeInTheDocument();
+    });
 
-  it('opens dropdown on click', async () => {
-    const user = userEvent.setup();
-    render(
-      <ModelSelector
-        models={mockModels}
-        selectedModel="model-1"
-        onModelChange={mockOnModelChange}
-      />
-    );
-
-    await user.click(screen.getByRole('button'));
-
-    // All model names should be visible in dropdown
-    expect(screen.getByText('Test Model 2')).toBeInTheDocument();
-    expect(screen.getByText('Test Model 3')).toBeInTheDocument();
-  });
-
-  it('calls onModelChange when item selected', async () => {
-    const user = userEvent.setup();
-    render(
-      <ModelSelector
-        models={mockModels}
-        selectedModel="model-1"
-        onModelChange={mockOnModelChange}
-      />
-    );
-
-    await user.click(screen.getByRole('button'));
-    await user.click(screen.getByText('Test Model 2'));
-
-    expect(mockOnModelChange).toHaveBeenCalledWith('model-2');
-  });
-
-  it('renders with disabled state', () => {
-    render(
-      <ModelSelector
-        models={mockModels}
-        selectedModel="model-1"
-        onModelChange={mockOnModelChange}
-        disabled
-      />
-    );
-
-    expect(screen.getByRole('button')).toBeDisabled();
-  });
-
-  it('renders all models in dropdown', async () => {
-    const user = userEvent.setup();
-    render(
-      <ModelSelector
-        models={mockModels}
-        selectedModel="model-1"
-        onModelChange={mockOnModelChange}
-      />
-    );
-
-    await user.click(screen.getByRole('button'));
-
-    // Use getAllByRole to find menu items specifically (avoids matching the trigger button)
-    const menuItems = screen.getAllByRole('menuitem');
-    expect(menuItems).toHaveLength(mockModels.length);
-
-    // Verify each model name appears in the menu items
-    mockModels.forEach((model) => {
-      expect(menuItems.find(item => item.textContent === model.name)).toBeTruthy();
+    it('disables button when disabled prop is true', () => {
+      renderSelector({ disabled: true });
+      expect(screen.getByRole('button')).toBeDisabled();
     });
   });
 
-  it('handles empty models array', () => {
-    render(
-      <ModelSelector
-        models={[]}
-        selectedModel=""
-        onModelChange={mockOnModelChange}
-      />
-    );
+  describe('dropdown behavior', () => {
+    it('opens dropdown on click', async () => {
+      const user = userEvent.setup();
+      renderSelector();
 
-    expect(screen.getByText('Select Model')).toBeInTheDocument();
+      await user.click(screen.getByRole('button'));
+
+      expect(screen.getByText('Test Model 2')).toBeInTheDocument();
+      expect(screen.getByText('Test Model 3')).toBeInTheDocument();
+    });
+
+    it('renders all models in dropdown', async () => {
+      const user = userEvent.setup();
+      renderSelector();
+
+      await user.click(screen.getByRole('button'));
+
+      const menuItems = screen.getAllByRole('menuitem');
+      expect(menuItems).toHaveLength(mockModels.length);
+
+      for (const model of mockModels) {
+        expect(menuItems.find(item => item.textContent === model.name)).toBeTruthy();
+      }
+    });
+
+    it('calls onModelChange when item selected', async () => {
+      const user = userEvent.setup();
+      renderSelector();
+
+      await user.click(screen.getByRole('button'));
+      await user.click(screen.getByText('Test Model 2'));
+
+      expect(mockOnModelChange).toHaveBeenCalledWith('model-2');
+    });
   });
 });
