@@ -1,9 +1,9 @@
 import { http, HttpResponse } from 'msw';
 
 const API_BASE = 'http://localhost:8000/api/v1';
+const ONE_DAY_MS = 86400000;
 
 export const handlers = [
-  // GET /chat/models - Public endpoint
   http.get(`${API_BASE}/chat/models`, () => {
     return HttpResponse.json([
       { id: 'Qwen/Qwen2.5-72B-Instruct', name: 'Qwen 2.5 72B' },
@@ -12,7 +12,6 @@ export const handlers = [
     ]);
   }),
 
-  // POST /users/sync
   http.post(`${API_BASE}/users/sync`, () => {
     return HttpResponse.json({
       status: 'exists',
@@ -20,7 +19,6 @@ export const handlers = [
     });
   }),
 
-  // GET /chat/sessions
   http.get(`${API_BASE}/chat/sessions`, () => {
     return HttpResponse.json([
       {
@@ -31,16 +29,13 @@ export const handlers = [
       {
         id: 'session_2',
         name: 'Another Chat',
-        created_at: new Date(Date.now() - 86400000).toISOString(),
+        created_at: new Date(Date.now() - ONE_DAY_MS).toISOString(),
       },
     ]);
   }),
 
-  // GET /chat/sessions/:id/messages
   http.get(`${API_BASE}/chat/sessions/:sessionId/messages`, ({ params }) => {
-    const { sessionId } = params;
-
-    if (sessionId === 'session_1') {
+    if (params.sessionId === 'session_1') {
       return HttpResponse.json([
         {
           id: 'msg_1',
@@ -57,34 +52,26 @@ export const handlers = [
         },
       ]);
     }
-
     return HttpResponse.json([]);
   }),
 
-  // POST /chat/stream - SSE streaming response
-  http.post(`${API_BASE}/chat/stream`, async () => {
+  http.post(`${API_BASE}/chat/stream`, () => {
     const encoder = new TextEncoder();
+    const chunks = ['Hello', '! How ', 'can I ', 'help you', ' today?'];
 
     const stream = new ReadableStream({
       start(controller) {
-        // Session event
         controller.enqueue(
           encoder.encode('data: {"type":"session","session_id":"session_new"}\n\n')
         );
 
-        // Content chunks
-        const chunks = ['Hello', '! How ', 'can I ', 'help you', ' today?'];
-        chunks.forEach((chunk) => {
+        for (const chunk of chunks) {
           controller.enqueue(
             encoder.encode(`data: {"type":"content","content":"${chunk}"}\n\n`)
           );
-        });
+        }
 
-        // Done event
-        controller.enqueue(
-          encoder.encode('data: {"type":"done"}\n\n')
-        );
-
+        controller.enqueue(encoder.encode('data: {"type":"done"}\n\n'));
         controller.close();
       },
     });

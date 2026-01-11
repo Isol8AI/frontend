@@ -1,19 +1,18 @@
 import { test, expect } from '@playwright/test';
-import { signInWithClerk, createMockChatStream } from './fixtures/auth.fixture';
+import { signInWithClerk, createMockChatStream, setupOrganizationMocks } from './fixtures/auth.fixture.js';
 
-/**
- * Session management E2E tests.
- *
- * Verifies session-related functionality:
- * - Session creation on first message
- * - Session list in sidebar
- * - Switching between sessions
- * - Creating new chats
- */
+const DEFAULT_TIMEOUT = 10000;
+const ONE_DAY_MS = 86400000;
+
+const SSE_HEADERS = {
+  'Content-Type': 'text/event-stream',
+  'Cache-Control': 'no-cache',
+  'Connection': 'keep-alive',
+};
 
 test.describe('Sessions', () => {
   test.beforeEach(async ({ page }) => {
-    await signInWithClerk(page);
+    await setupOrganizationMocks(page);
 
     await page.route('**/api/v1/chat/models', async (route) => {
       await route.fulfill({
@@ -30,9 +29,11 @@ test.describe('Sessions', () => {
         body: JSON.stringify({ status: 'exists', user_id: 'test_user' }),
       });
     });
+
+    await signInWithClerk(page);
   });
 
-  test('first message creates new session in sidebar', async ({ page }) => {
+  test('first message creates new session', async ({ page }) => {
     let sessionCreated = false;
 
     await page.route('**/api/v1/chat/sessions', async (route) => {
@@ -54,12 +55,13 @@ test.describe('Sessions', () => {
       sessionCreated = true;
       await route.fulfill({
         status: 200,
-        contentType: 'text/event-stream',
+        headers: SSE_HEADERS,
         body: createMockChatStream(['AI is artificial intelligence.']),
       });
     });
 
     await page.goto('/');
+    await page.waitForLoadState('networkidle');
     await expect(page.locator('text=No conversations yet')).toBeVisible();
 
     const textarea = page.locator('textarea[placeholder*="message"]');
@@ -67,7 +69,7 @@ test.describe('Sessions', () => {
     await textarea.fill('What is AI?');
     await page.locator('[data-testid="send-button"]').click();
 
-    await expect(page.locator('text=/AI.*artificial intelligence/i')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('text=/AI.*artificial intelligence/i')).toBeVisible({ timeout: DEFAULT_TIMEOUT });
   });
 
   test('clicking session loads its messages', async ({ page }) => {
@@ -135,8 +137,8 @@ test.describe('Sessions', () => {
         contentType: 'application/json',
         body: JSON.stringify([
           { id: 'session-1', name: 'First Conversation', created_at: new Date().toISOString() },
-          { id: 'session-2', name: 'Second Conversation', created_at: new Date(Date.now() - 86400000).toISOString() },
-          { id: 'session-3', name: 'Third Conversation', created_at: new Date(Date.now() - 172800000).toISOString() },
+          { id: 'session-2', name: 'Second Conversation', created_at: new Date(Date.now() - ONE_DAY_MS).toISOString() },
+          { id: 'session-3', name: 'Third Conversation', created_at: new Date(Date.now() - ONE_DAY_MS * 2).toISOString() },
         ]),
       });
     });
@@ -148,7 +150,7 @@ test.describe('Sessions', () => {
     await expect(page.locator('text=Third Conversation')).toBeVisible();
   });
 
-  test('current session is highlighted in sidebar', async ({ page }) => {
+  test('highlights current session in sidebar', async ({ page }) => {
     await page.route('**/api/v1/chat/sessions', async (route) => {
       await route.fulfill({
         status: 200,
@@ -171,10 +173,7 @@ test.describe('Sessions', () => {
     await page.goto('/');
     await page.locator('text=First Chat').click();
 
-    const firstSessionButton = page.locator('button:has-text("First Chat")');
-    await expect(firstSessionButton).toHaveClass(/secondary/);
-
-    const secondSessionButton = page.locator('button:has-text("Second Chat")');
-    await expect(secondSessionButton).not.toHaveClass(/secondary/);
+    await expect(page.locator('button:has-text("First Chat")')).toHaveClass(/secondary/);
+    await expect(page.locator('button:has-text("Second Chat")')).not.toHaveClass(/secondary/);
   });
 });

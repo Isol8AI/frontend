@@ -1,16 +1,7 @@
 import { test as base, expect, Page } from '@playwright/test';
 import { setupClerkTestingToken, clerk } from '@clerk/testing/playwright';
 
-/**
- * Auth fixture for Playwright E2E tests.
- *
- * Provides Clerk testing token setup and sign-in helper.
- * See: https://clerk.com/docs/testing/playwright/overview
- */
-
-export const test = base.extend<{
-  clerkPage: Page;
-}>({
+export const test = base.extend<{ clerkPage: Page }>({
   clerkPage: async ({ page }, use) => {
     await setupClerkTestingToken({ page });
     // eslint-disable-next-line react-hooks/rules-of-hooks
@@ -20,24 +11,19 @@ export const test = base.extend<{
 
 export { expect, clerk };
 
-/**
- * Signs in using Clerk and waits for it to be ready.
- * Use this in beforeEach hooks to authenticate before tests.
- */
+const CLERK_TIMEOUT = 10000;
+
 export async function signInWithClerk(page: Page): Promise<void> {
   await setupClerkTestingToken({ page });
   await page.goto('/');
-  await page.waitForFunction(() => window.Clerk !== undefined, { timeout: 10000 });
-  await page.waitForFunction(() => window.Clerk.loaded, { timeout: 10000 });
+  await page.waitForFunction(() => window.Clerk !== undefined, { timeout: CLERK_TIMEOUT });
+  await page.waitForFunction(() => window.Clerk.loaded, { timeout: CLERK_TIMEOUT });
   await clerk.signIn({
     page,
     emailAddress: process.env.E2E_CLERK_USER_USERNAME!,
   });
 }
 
-/**
- * Creates a mock SSE stream response for the chat endpoint.
- */
 export function createMockChatStream(chunks: string[]): string {
   const sessionEvent = 'data: {"type":"session","session_id":"test-session-id"}\n\n';
   const contentEvents = chunks
@@ -46,4 +32,38 @@ export function createMockChatStream(chunks: string[]): string {
   const doneEvent = 'data: {"type":"done"}\n\n';
 
   return sessionEvent + contentEvents + doneEvent;
+}
+
+export async function setupOrganizationMocks(page: Page): Promise<void> {
+  await page.route('**/api/v1/organizations/sync', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ status: 'created', org_id: 'org_test_123' }),
+    });
+  });
+
+  await page.route('**/api/v1/organizations/current', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        org_id: null,
+        is_personal_context: true,
+        is_org_admin: false,
+      }),
+    });
+  });
+
+  await page.route('**/api/v1/organizations/', async (route) => {
+    if (route.request().method() === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ organizations: [] }),
+      });
+    } else {
+      await route.continue();
+    }
+  });
 }
