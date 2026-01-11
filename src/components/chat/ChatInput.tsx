@@ -44,6 +44,8 @@ export function ChatInput({ onSend, disabled, centered }: ChatInputProps) {
           className="absolute right-2 bottom-2"
           onClick={handleSend}
           disabled={!input.trim() || disabled}
+          data-testid="send-button"
+          aria-label="Send message"
         >
           <SendHorizontal className="h-5 w-5" />
         </Button>

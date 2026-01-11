@@ -2,12 +2,21 @@ import { useAuth } from "@clerk/nextjs";
 
 const BACKEND_URL = "http://localhost:8000/api/v1";
 
-export const useApi = () => {
+interface ApiMethods {
+  syncUser: () => Promise<unknown>;
+  get: (endpoint: string) => Promise<unknown>;
+  post: (endpoint: string, body: unknown) => Promise<unknown>;
+}
+
+export function useApi(): ApiMethods {
   const { getToken } = useAuth();
 
-  const authenticatedFetch = async (endpoint: string, options: RequestInit = {}) => {
+  async function authenticatedFetch(
+    endpoint: string,
+    options: RequestInit = {}
+  ): Promise<unknown> {
     const token = await getToken();
-    
+
     if (!token) {
       throw new Error("No authentication token available");
     }
@@ -24,20 +33,20 @@ export const useApi = () => {
     });
 
     if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.detail || "API request failed");
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.detail || "API request failed");
     }
 
     return response.json();
-  };
+  }
 
   return {
     syncUser: () => authenticatedFetch("/users/sync", { method: "POST" }),
-    // Add other API methods here
     get: (endpoint: string) => authenticatedFetch(endpoint, { method: "GET" }),
-    post: (endpoint: string, body: any) => authenticatedFetch(endpoint, {
+    post: (endpoint: string, body: unknown) =>
+      authenticatedFetch(endpoint, {
         method: "POST",
         body: JSON.stringify(body),
-    }),
+      }),
   };
-};
+}

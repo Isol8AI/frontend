@@ -1,74 +1,56 @@
 import { test, expect } from '@playwright/test';
 import { clerk } from '@clerk/testing/playwright';
+import { signInWithClerk } from './fixtures/auth.fixture';
 
 /**
  * Authentication E2E tests.
  *
- * These tests verify the authentication flow works correctly:
+ * Verifies authentication flow:
  * - Authenticated users can access the chat interface
  * - Unauthenticated users are redirected to sign-in
  * - Protected routes require authentication
- *
- * Uses Clerk Testing Tokens for authentication bypass.
- * See: https://clerk.com/docs/testing/playwright/overview
  */
 
 test.describe('Authenticated User', () => {
-  // These tests use the pre-authenticated state from auth.setup.ts
+  test.beforeEach(async ({ page }) => {
+    await signInWithClerk(page);
+    await page.goto('/');
+  });
 
   test('can access chat interface', async ({ page }) => {
-    await page.goto('/');
-
-    // Should see the chat interface, not a sign-in redirect
-    await expect(page.locator('body')).toBeVisible();
-    await expect(page).not.toHaveURL(/sign-in/);
+    await expect(page).not.toHaveURL(/sign-in/, { timeout: 10000 });
+    await expect(page.locator('textarea')).toBeVisible({ timeout: 10000 });
   });
 
   test('chat interface shows model selector', async ({ page }) => {
-    await page.goto('/');
-
-    // Should see the model selector dropdown
-    await expect(
-      page.getByRole('combobox').or(page.locator('[data-testid="model-selector"]')).or(page.locator('button:has-text("Qwen")'))
-    ).toBeVisible({ timeout: 10000 });
+    const modelSelector = page
+      .getByRole('combobox')
+      .or(page.locator('[data-testid="model-selector"]'))
+      .or(page.locator('button:has-text("Qwen")'));
+    await expect(modelSelector).toBeVisible({ timeout: 10000 });
   });
 
   test('chat interface shows message input', async ({ page }) => {
-    await page.goto('/');
-
-    // Should see the message input area
-    await expect(
-      page.getByPlaceholder(/message/i).or(page.locator('textarea'))
-    ).toBeVisible({ timeout: 10000 });
+    const messageInput = page.getByPlaceholder(/message/i).or(page.locator('textarea'));
+    await expect(messageInput).toBeVisible({ timeout: 10000 });
   });
 
   test('can sign out', async ({ page }) => {
-    await page.goto('/');
-    await expect(page.locator('body')).toBeVisible();
-
-    // Sign out using Clerk helper
     await clerk.signOut({ page });
-
-    // Should be redirected to sign-in
     await expect(page).toHaveURL(/sign-in/, { timeout: 10000 });
   });
 });
 
 test.describe('Unauthenticated Access', () => {
-  // These tests run without the stored auth state
   test.use({ storageState: { cookies: [], origins: [] } });
 
   test('unauthenticated user is redirected to sign-in', async ({ page }) => {
     await page.goto('/');
-
-    // Should redirect to Clerk sign-in
     await expect(page).toHaveURL(/sign-in/, { timeout: 10000 });
   });
 
   test('sign-in page is accessible', async ({ page }) => {
     await page.goto('/sign-in');
-
-    // Should load without errors
     await expect(page).not.toHaveURL(/error/i);
     await expect(page.locator('body')).toBeVisible();
   });
@@ -94,6 +76,8 @@ test.describe('Public API Endpoints', () => {
 });
 
 test.describe('Protected API Endpoints', () => {
+  // Note: These tests use a standalone request context which doesn't share
+  // browser cookies. They verify that unauthenticated API requests are rejected.
   test('sessions endpoint requires auth', async ({ request }) => {
     const response = await request.get('http://localhost:8000/api/v1/chat/sessions');
 
