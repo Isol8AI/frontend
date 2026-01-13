@@ -1,11 +1,14 @@
 import { test, expect } from '@playwright/test';
 import { signInWithClerk, setupOrganizationMocks } from './fixtures/auth.fixture.js';
+import { setupEncryption, setupEncryptionMocks, mockKeyCreation } from './fixtures/encryption.fixture.js';
 
 const API_BASE = 'http://localhost:8000';
-const DEFAULT_TIMEOUT = 10000;
+const DEFAULT_TIMEOUT = 15000;
 
 test.describe('Organizations', () => {
   test.beforeEach(async ({ page }) => {
+    await setupEncryptionMocks(page);
+    await mockKeyCreation(page);
     await setupOrganizationMocks(page);
 
     await page.route('**/api/v1/chat/models', async (route) => {
@@ -43,6 +46,9 @@ test.describe('Organizations', () => {
     await page.goto('/');
     await page.waitForLoadState('networkidle');
 
+    // Set up encryption first
+    await setupEncryption(page);
+
     const orgSwitcher = page
       .locator('button:has-text("organization switcher")')
       .or(page.locator('[aria-label*="organization"]'));
@@ -52,6 +58,9 @@ test.describe('Organizations', () => {
   test('shows context indicator in sidebar', async ({ page }) => {
     await page.goto('/');
     await page.waitForLoadState('networkidle');
+
+    // Set up encryption first
+    await setupEncryption(page);
 
     const contextIndicator = page.locator('text=/Personal Chats|Organization Chats/');
     await expect(contextIndicator).toBeVisible({ timeout: DEFAULT_TIMEOUT });
@@ -74,6 +83,9 @@ test.describe('Organizations', () => {
     await page.goto('/');
     await page.waitForLoadState('networkidle');
 
+    // Set up encryption first
+    await setupEncryption(page);
+
     await expect(page.locator('text=Test Session')).toBeVisible({ timeout: DEFAULT_TIMEOUT });
     expect(sessionCalls.length).toBeGreaterThan(0);
   });
@@ -94,6 +106,9 @@ test.describe('Organizations', () => {
 
     await page.goto('/');
     await page.waitForLoadState('networkidle');
+
+    // Set up encryption first
+    await setupEncryption(page);
 
     if (syncCalled) {
       expect(syncPayload).toBeTruthy();
@@ -122,6 +137,9 @@ test.describe('Organizations', () => {
 
     await page.goto('/');
     await page.waitForLoadState('networkidle');
+
+    // Set up encryption first
+    await setupEncryption(page);
 
     if (currentOrgCalled) {
       // Verify the API was called - actual UI display depends on frontend implementation

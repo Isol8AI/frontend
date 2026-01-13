@@ -1,18 +1,20 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useAuth, useUser } from "@clerk/nextjs";
+import { useUser } from "@clerk/nextjs";
+import Link from "next/link";
 
 import { ChatInput } from "./ChatInput";
 import { MessageList } from "./MessageList";
 import { ModelSelector } from "./ModelSelector";
 import { useApi } from "@/lib/api";
-
-interface Message {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-}
+import { useEncryption } from "@/hooks/useEncryption";
+import { useChat, type ChatMessage } from "@/hooks/useChat";
+import { SetupEncryptionPrompt } from "@/components/encryption/SetupEncryptionPrompt";
+import { UnlockEncryptionPrompt } from "@/components/encryption/UnlockEncryptionPrompt";
+import { EncryptionStatusBadge } from "@/components/encryption/EncryptionStatusBadge";
+import { Button } from "@/components/ui/button";
+import { Settings, Shield } from "lucide-react";
 
 interface Model {
   id: string;
@@ -36,22 +38,44 @@ function ModelHeader({ models, selectedModel, onModelChange, disabled }: ModelHe
         onModelChange={onModelChange}
         disabled={disabled}
       />
+      <div className="ml-auto flex items-center gap-2">
+        <EncryptionStatusBadge />
+        <Link href="/settings/encryption">
+          <Button variant="ghost" size="icon" className="h-8 w-8">
+            <Settings className="h-4 w-4" />
+          </Button>
+        </Link>
+      </div>
     </div>
   );
 }
 
+// Convert ChatMessage to legacy Message format for MessageList
+interface Message {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+}
+
 export function ChatWindow(): React.ReactElement {
   const api = useApi();
-  const { getToken } = useAuth();
   const { user } = useUser();
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [sessionId, setSessionId] = useState<string | null>(null);
-  const [isTyping, setIsTyping] = useState(false);
+  const encryption = useEncryption();
+  const encryptedChat = useChat({
+    onSessionChange: () => {
+      window.dispatchEvent(new CustomEvent("sessionUpdated"));
+    },
+  });
+
   const [models, setModels] = useState<Model[]>([]);
   const [selectedModel, setSelectedModel] = useState<string>("");
 
-  const isInitialState = messages.length === 0;
+  // Determine if encryption is ready for chat
+  const isEncryptionReady = encryption.state.isSetup && encryption.state.isUnlocked;
+  const isInitialState = encryptedChat.messages.length === 0;
+  const isTyping = encryptedChat.isStreaming;
 
+  // Load models on mount
   useEffect(() => {
     async function loadModels(): Promise<void> {
       if (!user) {
@@ -70,119 +94,129 @@ export function ChatWindow(): React.ReactElement {
       }
     }
     loadModels();
-  }, [user?.id, api]);
+  }, [user, api]);
 
+  // Handle new chat event
   useEffect(() => {
     function handleNewChat(): void {
-      setMessages([]);
-      setSessionId(null);
+      encryptedChat.clearSession();
     }
     window.addEventListener("newChat", handleNewChat);
     return () => window.removeEventListener("newChat", handleNewChat);
-  }, []);
+  }, [encryptedChat]);
 
+  // Handle session selection event
   useEffect(() => {
     async function handleSelectSession(e: Event): Promise<void> {
       const customEvent = e as CustomEvent<{ sessionId: string }>;
       const selectedSessionId = customEvent.detail.sessionId;
-      setSessionId(selectedSessionId);
 
       try {
-        const data = await api.get(`/chat/sessions/${selectedSessionId}/messages`) as Array<{ id: string; role: string; content: string }>;
-        const loadedMessages: Message[] = data.map((msg) => ({
-          id: msg.id,
-          role: msg.role as "user" | "assistant",
-          content: msg.content,
-        }));
-        setMessages(loadedMessages);
+        await encryptedChat.loadSession(selectedSessionId);
       } catch (err) {
-        console.error("Failed to load messages:", err);
+        console.error("Failed to load session:", err);
       }
     }
 
     window.addEventListener("selectSession", handleSelectSession);
     return () => window.removeEventListener("selectSession", handleSelectSession);
-  }, [api]);
+  }, [encryptedChat]);
 
-  const handleSend = useCallback(async function(content: string): Promise<void> {
-    const tempId = Date.now().toString();
-    const assistantId = (Date.now() + 1).toString();
-
-    setMessages((prev) => [...prev, { id: tempId, role: "user", content }]);
-    setMessages((prev) => [...prev, { id: assistantId, role: "assistant", content: "" }]);
-    setIsTyping(true);
+  // Handle sending a message
+  const handleSend = useCallback(async (content: string): Promise<void> => {
+    if (!isEncryptionReady) {
+      console.error("Encryption not ready");
+      return;
+    }
 
     try {
-      const token = await getToken();
-      if (!token) throw new Error("No authentication token");
-
-      const response = await fetch("http://localhost:8000/api/v1/chat/stream", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          message: content,
-          session_id: sessionId,
-          model: selectedModel,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error("Stream request failed");
-      }
-
-      const reader = response.body?.getReader();
-      if (!reader) {
-        throw new Error("No response body");
-      }
-
-      const decoder = new TextDecoder();
-      let fullContent = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        const chunk = decoder.decode(value);
-        const lines = chunk.split("\n");
-
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
-
-          try {
-            const data = JSON.parse(line.slice(6));
-
-            if (data.type === "session" && !sessionId) {
-              setSessionId(data.session_id);
-              window.dispatchEvent(new CustomEvent("sessionUpdated"));
-            } else if (data.type === "content") {
-              fullContent += data.content;
-              setMessages((prev) =>
-                prev.map((msg) =>
-                  msg.id === assistantId ? { ...msg, content: fullContent } : msg
-                )
-              );
-            }
-          } catch {
-            // Ignore parse errors for incomplete chunks
-          }
-        }
-      }
+      await encryptedChat.sendMessage(content, selectedModel);
     } catch (err) {
-      console.error("Chat Error:", err);
-      const errorMessage = err instanceof Error ? err.message : "Failed to send message.";
-      setMessages((prev) =>
-        prev.map((msg) =>
-          msg.id === assistantId ? { ...msg, content: `Error: ${errorMessage}` } : msg
-        )
-      );
-    } finally {
-      setIsTyping(false);
+      console.error("Failed to send message:", err);
     }
-  }, [getToken, sessionId, selectedModel]);
+  }, [encryptedChat, selectedModel, isEncryptionReady]);
 
+  // Convert ChatMessage[] to Message[] for MessageList
+  const messages: Message[] = encryptedChat.messages.map((msg) => ({
+    id: msg.id,
+    role: msg.role,
+    content: msg.content,
+  }));
+
+  // Show loading state only during initial encryption status fetch
+  // (not during setup - SetupEncryptionPrompt handles its own loading state)
+  if (encryption.state.isLoading && encryption.state.isSetup === false && encryption.state.publicKey === null) {
+    return (
+      <div className="flex flex-col h-full items-center justify-center">
+        <div className="animate-pulse text-muted-foreground">
+          Loading encryption status...
+        </div>
+      </div>
+    );
+  }
+
+  // Show setup prompt if encryption not set up
+  if (!encryption.state.isSetup) {
+    return (
+      <div className="flex flex-col h-full">
+        <ModelHeader
+          models={models}
+          selectedModel={selectedModel}
+          onModelChange={setSelectedModel}
+          disabled={true}
+        />
+        <div className="flex-1 flex flex-col items-center justify-center p-4">
+          <SetupEncryptionPrompt />
+        </div>
+      </div>
+    );
+  }
+
+  // Show unlock prompt if encryption is locked
+  if (!encryption.state.isUnlocked) {
+    return (
+      <div className="flex flex-col h-full">
+        <ModelHeader
+          models={models}
+          selectedModel={selectedModel}
+          onModelChange={setSelectedModel}
+          disabled={true}
+        />
+        <div className="flex-1 flex flex-col items-center justify-center p-4">
+          <UnlockEncryptionPrompt />
+        </div>
+      </div>
+    );
+  }
+
+  // Show error message if there's an encryption error
+  if (encryptedChat.error) {
+    return (
+      <div className="flex flex-col h-full">
+        <ModelHeader
+          models={models}
+          selectedModel={selectedModel}
+          onModelChange={setSelectedModel}
+          disabled={isTyping}
+        />
+        <div className="flex-1 flex flex-col">
+          {messages.length > 0 && (
+            <MessageList messages={messages} isTyping={isTyping} />
+          )}
+          <div
+            className="p-4 m-4 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 rounded-lg"
+            data-testid="encryption-error"
+          >
+            <p className="font-medium">Encryption Error</p>
+            <p className="text-sm">{encryptedChat.error}</p>
+          </div>
+          <ChatInput onSend={handleSend} disabled={isTyping} />
+        </div>
+      </div>
+    );
+  }
+
+  // Initial state - show welcome screen
   if (isInitialState) {
     return (
       <div className="flex flex-col h-full">
@@ -209,6 +243,7 @@ export function ChatWindow(): React.ReactElement {
     );
   }
 
+  // Normal chat state
   return (
     <div className="flex flex-col h-full">
       <ModelHeader

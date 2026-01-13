@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { OrganizationProvider } from "@/components/providers/OrganizationProvider";
+import { EncryptionProvider } from "@/hooks/useEncryption";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -30,7 +32,11 @@ export default function RootLayout({
         <body
           className={`${geistSans.variable} ${geistMono.variable} antialiased`}
         >
-          <OrganizationProvider>{children}</OrganizationProvider>
+          <ErrorBoundary>
+            <OrganizationProvider>
+              <EncryptionProvider>{children}</EncryptionProvider>
+            </OrganizationProvider>
+          </ErrorBoundary>
         </body>
       </html>
     </ClerkProvider>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth, UserButton } from "@clerk/nextjs";
 
 import { Sidebar } from "@/components/chat/Sidebar";
@@ -31,15 +31,23 @@ export function ChatLayout({ children }: ChatLayoutProps): React.ReactElement {
   const { orgId, isPersonalContext } = useOrgContext();
   const [sessions, setSessions] = useState<Session[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const [isLoadingSessions, setIsLoadingSessions] = useState(false);
+
+  // Use refs to avoid recreating event handlers on every render
+  const apiRef = useRef(api);
+  apiRef.current = api;
 
   const loadSessions = useCallback(async (): Promise<void> => {
+    setIsLoadingSessions(true);
     try {
-      const data = await api.get("/chat/sessions");
+      const data = await apiRef.current.get("/chat/sessions");
       setSessions(data as Session[]);
     } catch (err) {
       console.error("Failed to load sessions:", err);
+    } finally {
+      setIsLoadingSessions(false);
     }
-  }, [api]);
+  }, []);
 
   const resetToNewChat = useCallback((): void => {
     setCurrentSessionId(null);
@@ -50,10 +58,10 @@ export function ChatLayout({ children }: ChatLayoutProps): React.ReactElement {
   useEffect(() => {
     if (!isSignedIn) return;
 
-    api.syncUser()
+    apiRef.current.syncUser()
       .then(() => loadSessions())
       .catch((err) => console.error("User sync failed:", err));
-  }, [isSignedIn, api, loadSessions]);
+  }, [isSignedIn, loadSessions]);
 
   useEffect(() => {
     if (isSignedIn) {
@@ -61,14 +69,25 @@ export function ChatLayout({ children }: ChatLayoutProps): React.ReactElement {
     }
   }, [orgId, isSignedIn, resetToNewChat]);
 
+  // Stable event listener setup using refs
   useEffect(() => {
-    window.addEventListener("orgContextChanged", resetToNewChat);
-    return () => window.removeEventListener("orgContextChanged", resetToNewChat);
-  }, [resetToNewChat]);
+    const handleOrgContextChanged = (): void => {
+      setCurrentSessionId(null);
+      dispatchNewChatEvent();
+      loadSessions();
+    };
 
-  useEffect(() => {
-    window.addEventListener("sessionUpdated", loadSessions);
-    return () => window.removeEventListener("sessionUpdated", loadSessions);
+    const handleSessionUpdated = (): void => {
+      loadSessions();
+    };
+
+    window.addEventListener("orgContextChanged", handleOrgContextChanged);
+    window.addEventListener("sessionUpdated", handleSessionUpdated);
+
+    return () => {
+      window.removeEventListener("orgContextChanged", handleOrgContextChanged);
+      window.removeEventListener("sessionUpdated", handleSessionUpdated);
+    };
   }, [loadSessions]);
 
   function handleNewChat(): void {
@@ -96,6 +115,7 @@ export function ChatLayout({ children }: ChatLayoutProps): React.ReactElement {
           className="flex-1"
           sessions={sessions}
           currentSessionId={currentSessionId}
+          isLoading={isLoadingSessions}
           onNewChat={handleNewChat}
           onSelectSession={handleSelectSession}
         />

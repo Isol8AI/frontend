@@ -3,6 +3,8 @@
 import { createContext, ReactNode, useContext, useEffect, useRef } from "react";
 import { useAuth, useOrganization } from "@clerk/nextjs";
 
+import { BACKEND_URL } from "@/lib/api";
+
 interface OrgContextValue {
   orgId: string | null;
   orgName: string | null;
@@ -61,7 +63,7 @@ export function OrganizationProvider({ children }: OrganizationProviderProps): R
         const token = await getToken();
         if (!token) return;
 
-        const response = await fetch("http://localhost:8000/api/v1/organizations/sync", {
+        const response = await fetch(`${BACKEND_URL}/organizations/sync`, {
           method: "POST",
           headers: {
             Authorization: `Bearer ${token}`,

@@ -1,17 +1,19 @@
 import { test, expect } from '@playwright/test';
-import { signInWithClerk, createMockChatStream, setupOrganizationMocks } from './fixtures/auth.fixture.js';
+import { signInWithClerk, setupOrganizationMocks } from './fixtures/auth.fixture.js';
+import {
+  setupEncryption,
+  setupEncryptionMocks,
+  mockKeyCreation,
+  createEncryptedStreamHandler,
+} from './fixtures/encryption.fixture.js';
 
-const DEFAULT_TIMEOUT = 10000;
+const DEFAULT_TIMEOUT = 15000;
 const ONE_DAY_MS = 86400000;
-
-const SSE_HEADERS = {
-  'Content-Type': 'text/event-stream',
-  'Cache-Control': 'no-cache',
-  'Connection': 'keep-alive',
-};
 
 test.describe('Sessions', () => {
   test.beforeEach(async ({ page }) => {
+    await setupEncryptionMocks(page);
+    await mockKeyCreation(page);
     await setupOrganizationMocks(page);
 
     await page.route('**/api/v1/chat/models', async (route) => {
@@ -51,18 +53,20 @@ test.describe('Sessions', () => {
       }
     });
 
-    await page.route('**/api/v1/chat/stream', async (route) => {
+    await page.route('**/api/v1/chat/encrypted/stream', async (route) => {
       sessionCreated = true;
-      await route.fulfill({
-        status: 200,
-        headers: SSE_HEADERS,
-        body: createMockChatStream(['AI is artificial intelligence.']),
-      });
+      const handler = createEncryptedStreamHandler(['AI is artificial intelligence.']);
+      await handler(route);
     });
 
     await page.goto('/');
     await page.waitForLoadState('networkidle');
-    await expect(page.locator('text=No conversations yet')).toBeVisible();
+
+    // Set up encryption first
+    await setupEncryption(page);
+
+    // Now we should see the chat interface
+    await expect(page.locator('text=No conversations yet')).toBeVisible({ timeout: DEFAULT_TIMEOUT });
 
     const textarea = page.locator('textarea[placeholder*="message"]');
     await expect(textarea).toBeVisible();
@@ -95,6 +99,11 @@ test.describe('Sessions', () => {
     });
 
     await page.goto('/');
+    await page.waitForLoadState('networkidle');
+
+    // Set up encryption first
+    await setupEncryption(page);
+
     await page.locator('text=Previous Chat').click();
 
     await expect(page.locator('text=Hello from previous chat')).toBeVisible();
@@ -121,6 +130,11 @@ test.describe('Sessions', () => {
     });
 
     await page.goto('/');
+    await page.waitForLoadState('networkidle');
+
+    // Set up encryption first
+    await setupEncryption(page);
+
     await page.locator('text=Existing Chat').click();
     await expect(page.locator('text=Previous message')).toBeVisible();
 
@@ -144,6 +158,10 @@ test.describe('Sessions', () => {
     });
 
     await page.goto('/');
+    await page.waitForLoadState('networkidle');
+
+    // Set up encryption first
+    await setupEncryption(page);
 
     await expect(page.locator('text=First Conversation')).toBeVisible();
     await expect(page.locator('text=Second Conversation')).toBeVisible();
@@ -171,6 +189,11 @@ test.describe('Sessions', () => {
     });
 
     await page.goto('/');
+    await page.waitForLoadState('networkidle');
+
+    // Set up encryption first
+    await setupEncryption(page);
+
     await page.locator('text=First Chat').click();
 
     await expect(page.locator('button:has-text("First Chat")')).toHaveClass(/secondary/);

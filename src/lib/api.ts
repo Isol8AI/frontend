@@ -1,7 +1,8 @@
 import { useCallback, useMemo } from "react";
 import { useAuth } from "@clerk/nextjs";
 
-const BACKEND_URL = "http://localhost:8000/api/v1";
+// Use environment variable for production, fallback to localhost for development
+export const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
 
 interface CurrentOrg {
   org_id: string | null;

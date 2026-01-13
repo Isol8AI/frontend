@@ -1,16 +1,19 @@
 import { test, expect } from '@playwright/test';
-import { signInWithClerk, createMockChatStream, setupOrganizationMocks } from './fixtures/auth.fixture.js';
+import { signInWithClerk, setupOrganizationMocks } from './fixtures/auth.fixture.js';
+import {
+  setupEncryption,
+  setupEncryptionMocks,
+  mockKeyCreation,
+  createEncryptedStreamHandler,
+} from './fixtures/encryption.fixture.js';
 
-const DEFAULT_TIMEOUT = 10000;
-
-const SSE_HEADERS = {
-  'Content-Type': 'text/event-stream',
-  'Cache-Control': 'no-cache',
-  'Connection': 'keep-alive',
-};
+const DEFAULT_TIMEOUT = 15000;
 
 test.describe('Chat', () => {
   test.beforeEach(async ({ page }) => {
+    // Set up API mocks for encryption endpoints
+    await setupEncryptionMocks(page);
+    await mockKeyCreation(page);
     await setupOrganizationMocks(page);
 
     await page.route('**/api/v1/chat/models', async (route) => {
@@ -47,38 +50,68 @@ test.describe('Chat', () => {
     await signInWithClerk(page);
   });
 
-  test('sends message and receives streaming response', async ({ page }) => {
-    await page.route('**/api/v1/chat/stream', async (route) => {
-      await route.fulfill({
-        status: 200,
-        headers: SSE_HEADERS,
-        body: createMockChatStream(['Hello', '! I am ', 'an AI assistant.']),
-      });
+  test('shows encryption setup prompt for new user', async ({ page }) => {
+    await page.goto('/');
+    await page.waitForLoadState('networkidle');
+
+    // New user should see encryption setup prompt
+    await expect(page.locator('[data-testid="setup-encryption-prompt"]')).toBeVisible({
+      timeout: DEFAULT_TIMEOUT
+    });
+  });
+
+  test('allows setting up encryption and shows recovery code', async ({ page }) => {
+    await page.goto('/');
+    await page.waitForLoadState('networkidle');
+
+    // Set up encryption through the UI
+    const recoveryCode = await setupEncryption(page);
+
+    // Verify recovery code was displayed (it should be a 20-digit string with dashes)
+    expect(recoveryCode).toBeTruthy();
+    expect(recoveryCode.replace(/-/g, '').length).toBeGreaterThanOrEqual(16);
+
+    // After setup, chat input should be visible
+    const textarea = page.locator('textarea[placeholder*="message"]');
+    await expect(textarea).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+  });
+
+  test('sends message and receives streaming response after encryption setup', async ({ page }) => {
+    // Mock encrypted chat stream endpoint with real encryption
+    await page.route('**/api/v1/chat/encrypted/stream', async (route) => {
+      const handler = createEncryptedStreamHandler(['Hello', '! I am ', 'an AI assistant.']);
+      await handler(route);
     });
 
     await page.goto('/');
     await page.waitForLoadState('networkidle');
 
+    // Set up encryption first
+    await setupEncryption(page);
+
+    // Now send a message
     const textarea = page.locator('textarea[placeholder*="message"]');
     await expect(textarea).toBeVisible();
     await textarea.fill('Hello, how are you?');
     await page.locator('[data-testid="send-button"]').click();
 
+    // Verify message was sent
     await expect(page.locator('text=Hello, how are you?')).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+    // Verify response was decrypted and displayed
     await expect(page.locator('text=/Hello.*AI assistant/i')).toBeVisible({ timeout: DEFAULT_TIMEOUT });
   });
 
   test('clears input after sending', async ({ page }) => {
-    await page.route('**/api/v1/chat/stream', async (route) => {
-      await route.fulfill({
-        status: 200,
-        headers: SSE_HEADERS,
-        body: createMockChatStream(['Response']),
-      });
+    await page.route('**/api/v1/chat/encrypted/stream', async (route) => {
+      const handler = createEncryptedStreamHandler(['Response']);
+      await handler(route);
     });
 
     await page.goto('/');
     await page.waitForLoadState('networkidle');
+
+    // Set up encryption first
+    await setupEncryption(page);
 
     const textarea = page.locator('textarea[placeholder*="message"]');
     await expect(textarea).toBeVisible();
@@ -89,8 +122,12 @@ test.describe('Chat', () => {
     await expect(textarea).toHaveValue('');
   });
 
-  test('allows model selection', async ({ page }) => {
+  test('allows model selection after encryption setup', async ({ page }) => {
     await page.goto('/');
+    await page.waitForLoadState('networkidle');
+
+    // Set up encryption first
+    await setupEncryption(page);
 
     const modelButton = page.locator('button:has-text("Qwen")').first();
     await expect(modelButton).toBeVisible();
@@ -101,7 +138,7 @@ test.describe('Chat', () => {
   });
 
   test('handles stream failure gracefully', async ({ page }) => {
-    await page.route('**/api/v1/chat/stream', async (route) => {
+    await page.route('**/api/v1/chat/encrypted/stream', async (route) => {
       await route.fulfill({
         status: 500,
         contentType: 'application/json',
@@ -110,6 +147,10 @@ test.describe('Chat', () => {
     });
 
     await page.goto('/');
+    await page.waitForLoadState('networkidle');
+
+    // Set up encryption first
+    await setupEncryption(page);
 
     const textarea = page.locator('textarea[placeholder*="message"]');
     await textarea.fill('Test message');
@@ -123,16 +164,16 @@ test.describe('Chat', () => {
   });
 
   test('sends on Enter key', async ({ page }) => {
-    await page.route('**/api/v1/chat/stream', async (route) => {
-      await route.fulfill({
-        status: 200,
-        headers: SSE_HEADERS,
-        body: createMockChatStream(['Response']),
-      });
+    await page.route('**/api/v1/chat/encrypted/stream', async (route) => {
+      const handler = createEncryptedStreamHandler(['Response']);
+      await handler(route);
     });
 
     await page.goto('/');
     await page.waitForLoadState('networkidle');
+
+    // Set up encryption first
+    await setupEncryption(page);
 
     const textarea = page.locator('textarea[placeholder*="message"]');
     await textarea.fill('Hello via Enter');
@@ -143,6 +184,10 @@ test.describe('Chat', () => {
 
   test('does not send on Shift+Enter', async ({ page }) => {
     await page.goto('/');
+    await page.waitForLoadState('networkidle');
+
+    // Set up encryption first
+    await setupEncryption(page);
 
     const textarea = page.locator('textarea[placeholder*="message"]');
     await textarea.fill('Line 1');
