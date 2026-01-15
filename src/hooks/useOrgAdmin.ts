@@ -180,7 +180,7 @@ export function useOrgAdmin(): UseOrgAdminReturn {
         }
 
         const res = await fetch(
-          `${BACKEND_URL}/organizations/${orgId}/my-membership`,
+          `${BACKEND_URL}/organizations/${orgId}/membership`,
           {
             headers: { Authorization: `Bearer ${token}` },
           }

@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { clerk } from '@clerk/testing/playwright';
 import { signInWithClerk, setupOrganizationMocks } from './fixtures/auth.fixture.js';
+import { setupEncryptionMocks } from './fixtures/encryption.fixture.js';
 
 const API_BASE = 'http://localhost:8000';
 const DEFAULT_TIMEOUT = 10000;
@@ -8,13 +9,25 @@ const DEFAULT_TIMEOUT = 10000;
 test.describe('Authenticated User', () => {
   test.beforeEach(async ({ page }) => {
     await setupOrganizationMocks(page);
+    await setupEncryptionMocks(page);
     await signInWithClerk(page);
-    await page.goto('/');
+    // Wait for the page to render (don't use networkidle as Clerk may keep connections open)
+    // The encryption prompt or chat UI should appear after sign-in
+    const encryptionUI = page
+      .locator('[data-testid="setup-encryption-prompt"]')
+      .or(page.locator('[data-testid="unlock-encryption-prompt"]'))
+      .or(page.locator('textarea[placeholder*="message"]'));
+    await encryptionUI.first().waitFor({ state: 'visible', timeout: DEFAULT_TIMEOUT });
   });
 
   test('can access chat interface', async ({ page }) => {
     await expect(page).not.toHaveURL(/sign-in/, { timeout: DEFAULT_TIMEOUT });
-    await expect(page.locator('textarea')).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+    // After auth, user sees encryption setup or unlock prompt (never textarea directly)
+    // Use .first() to avoid strict mode violations when multiple elements match
+    const encryptionUI = page
+      .locator('[data-testid="setup-encryption-prompt"]')
+      .or(page.locator('[data-testid="unlock-encryption-prompt"]'));
+    await expect(encryptionUI.first()).toBeVisible({ timeout: DEFAULT_TIMEOUT });
   });
 
   test('chat interface shows model selector', async ({ page }) => {
@@ -25,9 +38,13 @@ test.describe('Authenticated User', () => {
     await expect(modelSelector).toBeVisible({ timeout: DEFAULT_TIMEOUT });
   });
 
-  test('chat interface shows message input', async ({ page }) => {
-    const messageInput = page.getByPlaceholder(/message/i).or(page.locator('textarea'));
-    await expect(messageInput).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+  test('chat interface shows encryption setup', async ({ page }) => {
+    // New users see passcode setup, returning users see passcode unlock
+    // Use .first() to avoid strict mode violations when multiple elements match
+    const passcodeInput = page
+      .locator('[data-testid="passcode-input"]')
+      .or(page.locator('[data-testid="unlock-passcode-input"]'));
+    await expect(passcodeInput.first()).toBeVisible({ timeout: DEFAULT_TIMEOUT });
   });
 
   test('can sign out', async ({ page }) => {
@@ -76,8 +93,8 @@ test.describe('Protected API Endpoints', () => {
     expect([401, 403]).toContain(response.status());
   });
 
-  test('chat stream endpoint requires auth', async ({ request }) => {
-    const response = await request.post(`${API_BASE}/api/v1/chat/stream`, {
+  test('encrypted chat stream endpoint requires auth', async ({ request }) => {
+    const response = await request.post(`${API_BASE}/api/v1/chat/encrypted/stream`, {
       data: { message: 'Hello' },
     });
     expect([401, 403]).toContain(response.status());

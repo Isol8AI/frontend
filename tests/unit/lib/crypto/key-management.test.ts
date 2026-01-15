@@ -65,11 +65,13 @@ describe('Key Generation', () => {
 
     it('generates unique recovery codes', async () => {
       const codes = new Set<string>();
-      for (let i = 0; i < 10; i++) {
+      // Use 5 iterations to verify uniqueness while reducing memory pressure
+      // (each iteration runs Argon2 twice - passcode + recovery)
+      for (let i = 0; i < 5; i++) {
         const result = await generateAndEncryptKeys('123456');
         codes.add(result.recoveryCode);
       }
-      expect(codes.size).toBe(10);
+      expect(codes.size).toBe(5);
     });
 
     it('rejects short passcode', async () => {
@@ -94,7 +96,7 @@ describe('Key Generation', () => {
       // Re-encrypt with new passcode
       const encrypted = await encryptPrivateKeyWithPasscode(
         hexToBytes(privateKey),
-        'newpasscode'
+        'code'
       );
 
       // Verify structure

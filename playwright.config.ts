@@ -1,4 +1,9 @@
 import { defineConfig, devices } from '@playwright/test';
+import dotenv from 'dotenv';
+import path from 'path';
+
+// Load .env.local for E2E tests (Playwright doesn't auto-load like Next.js)
+dotenv.config({ path: path.resolve(__dirname, '.env.local') });
 
 /**
  * Playwright E2E test configuration for Freebird.
@@ -22,7 +27,7 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 1 : undefined,
+  workers: 1, // Run tests serially to avoid race conditions with shared test user
   reporter: [
     ['html', { open: 'never' }],
     ['list'],

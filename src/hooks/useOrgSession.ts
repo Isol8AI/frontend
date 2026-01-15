@@ -320,7 +320,7 @@ export function useOrgSession(): UseOrgSessionReturn {
 
       // Fetch membership with encrypted org key
       const res = await fetch(
-        `${BACKEND_URL}/organizations/${state.currentOrgId}/my-membership`,
+        `${BACKEND_URL}/organizations/${state.currentOrgId}/membership`,
         {
           headers: { Authorization: `Bearer ${token}` },
         }

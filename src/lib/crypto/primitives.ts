@@ -21,7 +21,7 @@ import { gcm } from '@noble/ciphers/aes';
 import { hkdf } from '@noble/hashes/hkdf';
 import { sha512 } from '@noble/hashes/sha512';
 import { randomBytes } from '@noble/ciphers/webcrypto';
-import argon2 from 'argon2-browser';
+import { argon2id } from 'hash-wasm';
 
 // =============================================================================
 // Types
@@ -178,11 +178,14 @@ export function generateRecoveryCode(length: number = 20): string {
  *   With these parameters, even a 6-digit passcode (1M combinations)
  *   requires significant resources to brute-force offline.
  */
+// Default Argon2id memory cost: 128 MB for strong protection
+const DEFAULT_ARGON2_MEMORY = 131072;
+
 export async function deriveKeyFromPasscode(
   passcode: string,
   salt: Uint8Array,
   timeCost: number = 4,
-  memoryCost: number = 131072, // 128 MB in KB
+  memoryCost: number = DEFAULT_ARGON2_MEMORY,
   parallelism: number = 2
 ): Promise<Uint8Array> {
   if (!passcode) {
@@ -192,17 +195,19 @@ export async function deriveKeyFromPasscode(
     throw new Error('Salt must be 32 bytes');
   }
 
-  const result = await argon2.hash({
-    pass: passcode,
+  // Use hash-wasm argon2id - WASM implementation bundled as base64,
+  // works in both Node.js (tests) and browser without loading issues
+  const hashHex = await argon2id({
+    password: passcode,
     salt: salt,
-    time: timeCost,
-    mem: memoryCost,
+    iterations: timeCost,
+    memorySize: memoryCost, // in KB
     parallelism: parallelism,
-    hashLen: 32,
-    type: argon2.ArgonType.Argon2id,
+    hashLength: 32,
+    outputType: 'hex',
   });
 
-  return new Uint8Array(result.hash);
+  return hexToBytes(hashHex);
 }
 
 /**

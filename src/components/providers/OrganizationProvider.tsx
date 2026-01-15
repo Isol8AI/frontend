@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, ReactNode, useContext, useEffect, useRef } from "react";
-import { useAuth, useOrganization } from "@clerk/nextjs";
+import { useAuth, useOrganization, useOrganizationList } from "@clerk/nextjs";
 
 import { BACKEND_URL } from "@/lib/api";
 
@@ -11,6 +11,7 @@ interface OrgContextValue {
   orgSlug: string | null;
   isOrgContext: boolean;
   isPersonalContext: boolean;
+  isOrgAdmin: boolean;
 }
 
 const DEFAULT_ORG_CONTEXT: OrgContextValue = {
@@ -19,6 +20,7 @@ const DEFAULT_ORG_CONTEXT: OrgContextValue = {
   orgSlug: null,
   isOrgContext: false,
   isPersonalContext: true,
+  isOrgAdmin: false,
 };
 
 const OrgContext = createContext<OrgContextValue>(DEFAULT_ORG_CONTEXT);
@@ -40,10 +42,34 @@ function dispatchOrgContextEvent(detail: {
 }
 
 export function OrganizationProvider({ children }: OrganizationProviderProps): React.ReactElement {
-  const { organization, isLoaded: orgLoaded } = useOrganization();
-  const { getToken, isSignedIn } = useAuth();
+  const { organization, membership, isLoaded: orgLoaded } = useOrganization();
+  const { getToken, isSignedIn, isLoaded: authLoaded } = useAuth();
+  const { setActive, userMemberships, isLoaded: membershipsLoaded } = useOrganizationList({
+    userMemberships: { infinite: true },
+  });
   const prevOrgIdRef = useRef<string | null | undefined>(undefined);
+  const hasAutoActivatedRef = useRef(false);
 
+  // Auto-activate first org when user signs in (if they have memberships)
+  // This makes org context the default, with personal mode secondary
+  useEffect(() => {
+    // Wait for all data to load
+    if (!authLoaded || !orgLoaded || !membershipsLoaded) return;
+    if (!isSignedIn) return;
+
+    // Only auto-activate once per session
+    if (hasAutoActivatedRef.current) return;
+
+    // If no org is active and user has memberships, activate first org
+    if (!organization && userMemberships.data && userMemberships.data.length > 0 && setActive) {
+      hasAutoActivatedRef.current = true;
+      const firstOrg = userMemberships.data[0].organization;
+      console.log(`Auto-activating organization: ${firstOrg.name} (${firstOrg.id})`);
+      setActive({ organization: firstOrg.id });
+    }
+  }, [authLoaded, orgLoaded, membershipsLoaded, isSignedIn, organization, userMemberships.data, setActive]);
+
+  // Sync organization with backend when it changes
   useEffect(() => {
     if (!orgLoaded || !isSignedIn) return;
 
@@ -62,6 +88,15 @@ export function OrganizationProvider({ children }: OrganizationProviderProps): R
       try {
         const token = await getToken();
         if (!token) return;
+
+        // Ensure user exists before org sync (prevents FK violation race condition)
+        await fetch(`${BACKEND_URL}/users/sync`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        });
 
         const response = await fetch(`${BACKEND_URL}/organizations/sync`, {
           method: "POST",
@@ -97,6 +132,7 @@ export function OrganizationProvider({ children }: OrganizationProviderProps): R
     orgSlug: organization?.slug ?? null,
     isOrgContext: !!organization,
     isPersonalContext: !organization,
+    isOrgAdmin: membership?.role === "org:admin",
   };
 
   return <OrgContext.Provider value={value}>{children}</OrgContext.Provider>;

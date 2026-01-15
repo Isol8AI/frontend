@@ -11,8 +11,31 @@ const DEFAULT_TIMEOUT = 15000;
 async function fillReactInput(page: Page, selector: string, value: string): Promise<void> {
   const element = page.locator(selector);
   await element.click();
-  await element.fill(''); // Clear first
-  await element.pressSequentially(value, { delay: 50 }); // Type character by character
+  await page.waitForTimeout(100);
+
+  // Clear and type using keyboard.type which is more reliable for React inputs
+  await element.evaluate((el: HTMLInputElement) => {
+    el.value = '';
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await page.waitForTimeout(100);
+  await page.keyboard.type(value, { delay: 50 });
+  await page.waitForTimeout(100);
+
+  // Fallback: try native value setter if keyboard didn't work
+  const actualValue = await element.inputValue();
+  if (actualValue !== value) {
+    await element.evaluate((el: HTMLInputElement, val: string) => {
+      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
+        window.HTMLInputElement.prototype, 'value'
+      )?.set;
+      if (nativeInputValueSetter) {
+        nativeInputValueSetter.call(el, val);
+      }
+      el.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    }, value);
+  }
 }
 
 /**
@@ -85,14 +108,16 @@ test.describe('Encryption Setup', () => {
     await signInWithClerk(page);
   });
 
-  test('shows encryption setup prompt for new user', async ({ page }) => {
+  test('shows encryption setup or unlock prompt', async ({ page }) => {
     await page.goto('/settings/encryption');
+    await page.waitForLoadState('networkidle');
 
-    // Should see setup prompt or already-setup state depending on user's backend state
+    // User sees setup prompt (new user) or unlock prompt (returning user) or status badge (unlocked)
     const setupPrompt = page.locator('[data-testid="setup-encryption-prompt"]');
+    const unlockPrompt = page.locator('[data-testid="unlock-encryption-prompt"]');
     const alreadySetup = page.locator('[data-testid="encryption-status"]');
 
-    await expect(setupPrompt.or(alreadySetup)).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+    await expect(setupPrompt.or(unlockPrompt).or(alreadySetup).first()).toBeVisible({ timeout: DEFAULT_TIMEOUT });
   });
 
   test('passcode input accepts 6 digits', async ({ page }) => {

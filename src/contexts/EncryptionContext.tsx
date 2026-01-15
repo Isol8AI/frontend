@@ -122,7 +122,7 @@ interface EncryptionProviderProps {
 }
 
 export function EncryptionProvider({ children }: EncryptionProviderProps) {
-  const { getToken, userId } = useAuth();
+  const { getToken, userId, isLoaded: authLoaded } = useAuth();
 
   // Encryption state
   const [state, setState] = useState<EncryptionState>({
@@ -157,9 +157,17 @@ export function EncryptionProvider({ children }: EncryptionProviderProps) {
   // Fetch encryption status from server
   const refreshStatus = useCallback(async () => {
     console.log('=== refreshStatus START ===');
-    console.log('userId:', userId);
+    console.log('authLoaded:', authLoaded, 'userId:', userId);
+
+    // Don't fetch until auth is fully loaded
+    if (!authLoaded) {
+      console.log('Auth not loaded yet, keeping loading state');
+      return;
+    }
+
+    // If auth is loaded but no user, they're not signed in
     if (!userId) {
-      console.log('No userId, skipping refresh');
+      console.log('No userId (not signed in), clearing loading state');
       setState((prev) => ({ ...prev, isLoading: false }));
       return;
     }
@@ -223,7 +231,7 @@ export function EncryptionProvider({ children }: EncryptionProviderProps) {
             : 'Failed to load encryption status',
       }));
     }
-  }, [userId, getToken]);
+  }, [authLoaded, userId, getToken]);
 
   // Load status on mount and when user changes
   useEffect(() => {

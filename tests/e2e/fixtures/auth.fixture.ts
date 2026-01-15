@@ -22,6 +22,9 @@ export async function signInWithClerk(page: Page): Promise<void> {
     page,
     emailAddress: process.env.E2E_CLERK_USER_USERNAME!,
   });
+  // clerk.signIn is a testing utility that sets auth state but doesn't trigger navigation.
+  // Manually navigate to / after signing in.
+  await page.goto('/');
 }
 
 export function createMockChatStream(chunks: string[]): string {

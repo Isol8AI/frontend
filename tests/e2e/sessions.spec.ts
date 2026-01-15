@@ -5,6 +5,7 @@ import {
   setupEncryptionMocks,
   mockKeyCreation,
   createEncryptedStreamHandler,
+  createEncryptedMessagesHandler,
 } from './fixtures/encryption.fixture.js';
 
 const DEFAULT_TIMEOUT = 15000;
@@ -77,6 +78,12 @@ test.describe('Sessions', () => {
   });
 
   test('clicking session loads its messages', async ({ page }) => {
+    // Unroute the beforeEach's mockKeyCreation to avoid conflicts
+    await page.unroute('**/api/v1/users/me/keys');
+
+    // Set up fresh key capture
+    const keyCapture = await mockKeyCreation(page);
+
     await page.route('**/api/v1/chat/sessions', async (route) => {
       await route.fulfill({
         status: 200,
@@ -87,30 +94,37 @@ test.describe('Sessions', () => {
       });
     });
 
-    await page.route('**/api/v1/chat/sessions/session-1/messages', async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify([
-          { id: 'msg-1', role: 'user', content: 'Hello from previous chat' },
-          { id: 'msg-2', role: 'assistant', content: 'Hi! This is a previous response.' },
-        ]),
-      });
-    });
-
     await page.goto('/');
     await page.waitForLoadState('networkidle');
 
-    // Set up encryption first
+    // Set up encryption first - this captures the user's public key
     await setupEncryption(page);
+
+    // Now set up the encrypted messages route with the captured public key
+    const userPublicKey = keyCapture.getPublicKey();
+    if (userPublicKey) {
+      await page.route(
+        '**/api/v1/chat/sessions/session-1/messages',
+        createEncryptedMessagesHandler(userPublicKey, [
+          { id: 'msg-1', role: 'user', content: 'Hello from previous chat' },
+          { id: 'msg-2', role: 'assistant', content: 'Hi! This is a previous response.' },
+        ])
+      );
+    }
 
     await page.locator('text=Previous Chat').click();
 
-    await expect(page.locator('text=Hello from previous chat')).toBeVisible();
-    await expect(page.locator('text=Hi! This is a previous response.')).toBeVisible();
+    await expect(page.locator('text=Hello from previous chat')).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+    await expect(page.locator('text=Hi! This is a previous response.')).toBeVisible({ timeout: DEFAULT_TIMEOUT });
   });
 
   test('New Chat button clears conversation', async ({ page }) => {
+    // Unroute the beforeEach's mockKeyCreation to avoid conflicts
+    await page.unroute('**/api/v1/users/me/keys');
+
+    // Set up fresh key capture
+    const keyCapture = await mockKeyCreation(page);
+
     await page.route('**/api/v1/chat/sessions', async (route) => {
       await route.fulfill({
         status: 200,
@@ -121,22 +135,25 @@ test.describe('Sessions', () => {
       });
     });
 
-    await page.route('**/api/v1/chat/sessions/session-1/messages', async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify([{ id: 'msg-1', role: 'user', content: 'Previous message' }]),
-      });
-    });
-
     await page.goto('/');
     await page.waitForLoadState('networkidle');
 
-    // Set up encryption first
+    // Set up encryption first - this captures the user's public key
     await setupEncryption(page);
 
+    // Now set up the encrypted messages route with the captured public key
+    const userPublicKey = keyCapture.getPublicKey();
+    if (userPublicKey) {
+      await page.route(
+        '**/api/v1/chat/sessions/session-1/messages',
+        createEncryptedMessagesHandler(userPublicKey, [
+          { id: 'msg-1', role: 'user', content: 'Previous message' },
+        ])
+      );
+    }
+
     await page.locator('text=Existing Chat').click();
-    await expect(page.locator('text=Previous message')).toBeVisible();
+    await expect(page.locator('text=Previous message')).toBeVisible({ timeout: DEFAULT_TIMEOUT });
 
     await page.locator('text=New Chat').click();
 

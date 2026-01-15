@@ -1,12 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useAuth, UserButton } from "@clerk/nextjs";
+import { Settings } from "lucide-react";
 
 import { Sidebar } from "@/components/chat/Sidebar";
 import { OrganizationSwitcher } from "@/components/organization/OrganizationSwitcher";
 import { useOrgContext } from "@/components/providers/OrganizationProvider";
 import { useApi } from "@/lib/api";
+import { Button } from "@/components/ui/button";
 
 interface Session {
   id: string;
@@ -28,7 +31,7 @@ function dispatchSelectSessionEvent(sessionId: string): void {
 export function ChatLayout({ children }: ChatLayoutProps): React.ReactElement {
   const { isSignedIn } = useAuth();
   const api = useApi();
-  const { orgId, isPersonalContext } = useOrgContext();
+  const { orgId, isPersonalContext, isOrgAdmin } = useOrgContext();
   const [sessions, setSessions] = useState<Session[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [isLoadingSessions, setIsLoadingSessions] = useState(false);
@@ -110,6 +113,17 @@ export function ChatLayout({ children }: ChatLayoutProps): React.ReactElement {
         <div className="px-3 py-2 text-xs text-muted-foreground border-b">
           {isPersonalContext ? "Personal Chats" : "Organization Chats"}
         </div>
+
+        {!isPersonalContext && isOrgAdmin && orgId && (
+          <div className="px-3 py-2 border-b">
+            <Link href={`/org/${orgId}/settings/encryption`}>
+              <Button variant="ghost" size="sm" className="w-full justify-start gap-2">
+                <Settings className="h-4 w-4" />
+                Org Settings
+              </Button>
+            </Link>
+          </div>
+        )}
 
         <Sidebar
           className="flex-1"

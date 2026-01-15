@@ -9,7 +9,18 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./tests/setup.ts'],
     include: ['tests/**/*.test.{ts,tsx}'],
-    exclude: ['tests/e2e/**/*', 'node_modules/**/*'],
+    exclude: [
+      'tests/e2e/**/*',
+      'node_modules/**/*',
+    ],
+    // Use threads pool with limited workers
+    pool: 'threads',
+    poolOptions: {
+      threads: {
+        maxThreads: 2,
+        minThreads: 1,
+      },
+    },
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html'],

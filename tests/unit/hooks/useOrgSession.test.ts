@@ -21,6 +21,21 @@ const mockSetActive = vi.fn(() => Promise.resolve());
 const mockUnlockOrgKey = vi.fn();
 const mockLockOrgKey = vi.fn();
 
+// Create stable references for mock data to prevent infinite re-renders
+// The useOrgSession hook has useEffect dependencies that would change if these were inline
+const stableClerkMemberships = [
+  {
+    id: 'mem_1',
+    organization: { id: 'org_1', name: 'Test Org' },
+    role: 'org:member',
+    createdAt: new Date('2024-01-01'),
+  },
+];
+
+const stableUserMemberships = {
+  data: stableClerkMemberships,
+};
+
 // Mock Clerk hooks
 vi.mock('@clerk/nextjs', () => ({
   useAuth: () => ({
@@ -34,39 +49,37 @@ vi.mock('@clerk/nextjs', () => ({
   }),
   useOrganizationList: () => ({
     setActive: mockSetActive,
-    userMemberships: {
-      data: [
-        {
-          id: 'mem_1',
-          organization: { id: 'org_1', name: 'Test Org' },
-          role: 'org:member',
-          createdAt: new Date('2024-01-01'),
-        },
-      ],
-    },
+    userMemberships: stableUserMemberships,
   }),
 }));
 
+// Create stable encryption state to prevent infinite re-renders
+// This object is used in useEffect dependencies within useOrgSession
+const stableEncryptionState = {
+  isSetup: true,
+  isUnlocked: true,
+  publicKey: 'abc123',
+  enclavePublicKey: 'xyz789',
+  isLoading: false,
+  error: null,
+};
+
+// Create stable encryption mock return value
+const stableEncryptionReturn = {
+  state: stableEncryptionState,
+  isOrgUnlocked: false,
+  unlockOrgKey: mockUnlockOrgKey,
+  lockOrgKey: mockLockOrgKey,
+};
+
 // Mock useEncryption hook
 vi.mock('@/hooks/useEncryption', () => ({
-  useEncryption: () => ({
-    state: {
-      isSetup: true,
-      isUnlocked: true,
-      publicKey: 'abc123',
-      enclavePublicKey: 'xyz789',
-      isLoading: false,
-      error: null,
-    },
-    isOrgUnlocked: false,
-    unlockOrgKey: mockUnlockOrgKey,
-    lockOrgKey: mockLockOrgKey,
-  }),
+  useEncryption: () => stableEncryptionReturn,
 }));
 
 // Mock fetch for API calls
 const mockFetch = vi.fn();
-global.fetch = mockFetch;
+const originalFetch = global.fetch;
 
 // =============================================================================
 // Test Suite
@@ -76,6 +89,12 @@ describe('useOrgSession', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockFetch.mockReset();
+    global.fetch = mockFetch;
+  });
+
+  afterEach(() => {
+    // Restore original fetch to prevent memory accumulation
+    global.fetch = originalFetch;
   });
 
   describe('Initial State', () => {

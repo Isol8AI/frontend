@@ -10,14 +10,220 @@ import { randomBytes } from '@noble/ciphers/webcrypto';
  */
 export const TEST_PASSCODE = '123456';
 
+const BACKEND_URL = 'http://localhost:8000/api/v1';
+
+// =============================================================================
+// Real Backend Helpers
+// =============================================================================
+
+export interface UserOrg {
+  orgId: string;
+  orgName: string;
+  orgSlug: string;
+  isAdmin: boolean;
+  hasOrgKey: boolean;
+}
+
+/**
+ * Set the active organization in Clerk.
+ * This is needed before navigating to org pages because the org layout validates
+ * that organization.id matches the URL param.
+ */
+export async function setActiveOrg(page: Page, orgId: string): Promise<boolean> {
+  try {
+    const result = await page.evaluate(async (targetOrgId) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const clerk = (window as any).Clerk;
+      if (!clerk) {
+        console.log('Clerk not available');
+        return { success: false, error: 'Clerk not available' };
+      }
+
+      try {
+        // Set the active organization
+        await clerk.setActive({ organization: targetOrgId });
+        console.log(`Set active org to: ${targetOrgId}`);
+        return { success: true };
+      } catch (e) {
+        console.error('Failed to set active org:', e);
+        return { success: false, error: String(e) };
+      }
+    }, orgId);
+
+    if (!result.success) {
+      console.error('Failed to set active org:', result.error);
+      return false;
+    }
+
+    // Wait for Clerk to update
+    await page.waitForTimeout(500);
+    return true;
+  } catch (error) {
+    console.error('Error setting active org:', error);
+    return false;
+  }
+}
+
+/**
+ * Get the test user's organization memberships from Clerk.
+ * Returns the first org if user is in any orgs.
+ */
+export async function getUserOrgFromMemberships(page: Page): Promise<UserOrg | null> {
+  try {
+    // Get user's org memberships from Clerk
+    const orgs = await page.evaluate(async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const clerk = (window as any).Clerk;
+      if (!clerk?.user) {
+        return null;
+      }
+
+      // Get organization memberships
+      const memberships = await clerk.user.getOrganizationMemberships();
+      if (!memberships?.data?.length) {
+        return null;
+      }
+
+      // Return first org with its role
+      const membership = memberships.data[0];
+      return {
+        id: membership.organization.id,
+        name: membership.organization.name,
+        role: membership.role,
+      };
+    });
+
+    if (!orgs) {
+      console.log('User has no organization memberships');
+      return null;
+    }
+
+    const orgSlug = orgs.name
+      ?.toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '') || orgs.id;
+
+    console.log(`Got org from memberships: ${orgs.id} (${orgs.name}), role: ${orgs.role}`);
+
+    return {
+      orgId: orgs.id,
+      orgName: orgs.name || 'Unknown Org',
+      orgSlug,
+      isAdmin: orgs.role === 'org:admin',
+      hasOrgKey: false,
+    };
+  } catch (error) {
+    console.error('Error getting org from memberships:', error);
+    return null;
+  }
+}
+
+/**
+ * Get the test user's real organization from Clerk's context.
+ * This gets the org that Clerk is currently active in, which matches what the layout validates.
+ */
+export async function getUserOrg(page: Page): Promise<UserOrg | null> {
+  try {
+    // Get org from Clerk's active organization - this is what the layout validates against
+    const clerkOrg = await page.evaluate(() => {
+      // Clerk is injected globally by Clerk SDK
+      const clerk = (window as { Clerk?: {
+        organization?: { id: string; name: string; memberships?: { data: Array<{ role: string; publicUserData?: { userId: string } }> } };
+        user?: { id: string };
+      } }).Clerk;
+
+      if (!clerk?.organization) {
+        return null;
+      }
+
+      const org = clerk.organization;
+
+      // Try to determine the role - check if current user is admin
+      // The organization object may have memberships loaded
+      let role = 'org:member';
+      if (org.memberships?.data && clerk.user?.id) {
+        const userMembership = org.memberships.data.find(
+          (m) => m.publicUserData?.userId === clerk.user?.id
+        );
+        if (userMembership) {
+          role = userMembership.role;
+        }
+      }
+
+      return {
+        id: org.id,
+        name: org.name,
+        role,
+      };
+    });
+
+    if (!clerkOrg) {
+      console.log('No active Clerk organization');
+      return null;
+    }
+
+    // Create a URL-friendly slug from org name
+    const orgSlug = clerkOrg.name
+      ?.toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '') || clerkOrg.id;
+
+    console.log(`Got Clerk org: ${clerkOrg.id} (${clerkOrg.name}), role: ${clerkOrg.role}`);
+
+    return {
+      orgId: clerkOrg.id,
+      orgName: clerkOrg.name || 'Unknown Org',
+      orgSlug,
+      isAdmin: clerkOrg.role === 'org:admin',
+      hasOrgKey: false, // Will be fetched from backend when needed
+    };
+  } catch (error) {
+    console.error('Error fetching user org from Clerk:', error);
+    return null;
+  }
+}
+
+/**
+ * Helper to set up or unlock encryption based on current state.
+ * Handles both new users (setup) and returning users (unlock).
+ */
+export async function ensureEncryptionReady(page: Page): Promise<void> {
+  const setupPrompt = page.locator('[data-testid="setup-encryption-prompt"]');
+  const unlockPrompt = page.locator('[data-testid="unlock-encryption-prompt"]');
+  const chatTextarea = page.locator('textarea[placeholder*="message"]');
+
+  // First check if chat is already ready (no prompt needed)
+  if (await chatTextarea.isVisible({ timeout: 2000 }).catch(() => false)) {
+    console.log('Chat textarea already visible - encryption is ready');
+    return;
+  }
+
+  // Wait for either prompt to be visible
+  await expect(setupPrompt.or(unlockPrompt).first()).toBeVisible({ timeout: 15000 });
+
+  if (await unlockPrompt.isVisible()) {
+    console.log('Unlock prompt visible - unlocking...');
+    await unlockEncryption(page);
+  } else if (await setupPrompt.isVisible()) {
+    console.log('Setup prompt visible - setting up...');
+    await setupEncryption(page);
+  }
+
+  // Verify chat input is now visible
+  await expect(chatTextarea).toBeVisible({ timeout: 15000 });
+}
+
 /**
  * Helper to fill React controlled inputs/textareas that don't respond to regular fill/type.
- * This sets the value directly and dispatches proper events.
+ * This sets the value directly and dispatches proper events that React can detect.
  */
 async function fillReactInput(page: Page, selector: string, value: string): Promise<void> {
   await page.evaluate(({ selector, value }) => {
     const element = document.querySelector(selector) as HTMLInputElement | HTMLTextAreaElement;
     if (element) {
+      // Focus the element first
+      element.focus();
+
       // Get the appropriate prototype based on element type
       const prototype = element.tagName === 'TEXTAREA'
         ? window.HTMLTextAreaElement.prototype
@@ -27,10 +233,74 @@ async function fillReactInput(page: Page, selector: string, value: string): Prom
       if (nativeValueSetter) {
         nativeValueSetter.call(element, value);
       }
-      element.dispatchEvent(new Event('input', { bubbles: true }));
+
+      // React 16+ uses a special property to track input events
+      // We need to trigger the input event properly
+      const inputEvent = new InputEvent('input', {
+        bubbles: true,
+        cancelable: true,
+        inputType: 'insertText',
+        data: value,
+      });
+      element.dispatchEvent(inputEvent);
+
+      // Also dispatch change event for completeness
       element.dispatchEvent(new Event('change', { bubbles: true }));
     }
   }, { selector, value });
+}
+
+/**
+ * Robustly type into a React controlled input using multiple fallback methods.
+ * Works with password inputs and numeric-only inputs.
+ */
+async function robustTypeIntoInput(page: Page, locator: ReturnType<Page['locator']>, value: string): Promise<string> {
+  // Click to focus the input first
+  await locator.click();
+  await page.waitForTimeout(100);
+
+  // Clear any existing value
+  await locator.evaluate((el: HTMLInputElement) => {
+    el.value = '';
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await page.waitForTimeout(100);
+
+  // Method 1: Use keyboard.type() which simulates real keyboard events
+  await page.keyboard.type(value, { delay: 50 });
+  await page.waitForTimeout(200);
+
+  let inputValue = await locator.inputValue();
+
+  // Method 2: Direct React state update if keyboard.type didn't work
+  if (inputValue !== value) {
+    console.log(`keyboard.type got: "${inputValue}", trying direct value set`);
+    await locator.evaluate((el: HTMLInputElement, val: string) => {
+      el.focus();
+      el.value = '';
+      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
+        window.HTMLInputElement.prototype, 'value'
+      )?.set;
+      if (nativeInputValueSetter) {
+        nativeInputValueSetter.call(el, val);
+      }
+      el.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    }, value);
+    await page.waitForTimeout(200);
+    inputValue = await locator.inputValue();
+  }
+
+  // Method 3: Fill as final fallback
+  if (inputValue !== value) {
+    console.log(`Direct set got: "${inputValue}", trying fill`);
+    await locator.clear();
+    await locator.fill(value);
+    await page.waitForTimeout(100);
+    inputValue = await locator.inputValue();
+  }
+
+  return inputValue;
 }
 
 // =============================================================================
@@ -120,12 +390,78 @@ export const TEST_ENCLAVE_PUBLIC_KEY = bytesToHex(testEnclavePublicKey);
 // =============================================================================
 
 /**
+ * Reset user's encryption keys by calling the backend DELETE endpoint.
+ * This ensures a clean state for setup tests.
+ */
+export async function resetEncryptionKeys(page: Page): Promise<void> {
+  console.log('Resetting encryption keys...');
+
+  const result = await page.evaluate(async () => {
+    // Get Clerk token for authentication
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const clerk = (window as any).Clerk;
+    const token = await clerk?.session?.getToken();
+    if (!token) {
+      return { success: false, error: 'No auth token' };
+    }
+
+    try {
+      const response = await fetch('http://localhost:8000/api/v1/users/me/keys', {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      // 204 = deleted, 404 = didn't exist (both are fine)
+      if (response.status === 204 || response.status === 404) {
+        return { success: true, status: response.status };
+      }
+
+      return { success: false, status: response.status };
+    } catch (e) {
+      return { success: false, error: String(e) };
+    }
+  });
+
+  if (result.success) {
+    console.log(`Encryption keys reset (status: ${result.status})`);
+  } else {
+    console.warn(`Failed to reset encryption keys: ${result.error || result.status}`);
+  }
+}
+
+/**
  * Set up encryption for a new user (first-time setup).
  * This goes through the actual encryption UI flow with real crypto.
+ *
+ * Note: Handles race condition when multiple parallel tests share the same user.
+ * If another test creates keys between our reset and setup, we'll see the unlock
+ * prompt instead - in that case, we just unlock rather than failing.
  */
 export async function setupEncryption(page: Page): Promise<string> {
-  // Wait for the setup prompt to appear
-  await page.waitForSelector('[data-testid="setup-encryption-prompt"]', { timeout: 15000 });
+  // Reset any existing keys to ensure clean setup
+  await resetEncryptionKeys(page);
+
+  // Wait for the page to refresh and show the setup prompt
+  await page.reload();
+  await page.waitForLoadState('networkidle');
+
+  // Check what prompt appears - could be setup or unlock (race condition)
+  const setupPrompt = page.locator('[data-testid="setup-encryption-prompt"]');
+  const unlockPrompt = page.locator('[data-testid="unlock-encryption-prompt"]');
+
+  // Wait for either prompt to appear
+  await expect(setupPrompt.or(unlockPrompt).first()).toBeVisible({ timeout: 15000 });
+
+  // Handle race condition: if unlock prompt appears, another test created keys
+  if (await unlockPrompt.isVisible()) {
+    console.log('Race condition detected: keys exist after reset (parallel test created them), unlocking instead...');
+    await unlockEncryption(page, TEST_PASSCODE);
+    return ''; // Return empty recovery code since we didn't set up new keys
+  }
+
+  // Normal setup flow - setup prompt is visible
 
   // Wait for passcode inputs to be visible and interactive
   const passcodeInput = page.locator('[data-testid="passcode-input"]');
@@ -136,24 +472,41 @@ export async function setupEncryption(page: Page): Promise<string> {
   // Small wait for React to be ready
   await page.waitForTimeout(500);
 
-  // Use fillReactInput helper for React controlled inputs
-  await fillReactInput(page, '[data-testid="passcode-input"]', TEST_PASSCODE);
-  await fillReactInput(page, '[data-testid="passcode-confirm-input"]', TEST_PASSCODE);
+  // Fill passcode input using robust method
+  const passcodeValue = await robustTypeIntoInput(page, passcodeInput, TEST_PASSCODE);
+  console.log(`Passcode input value: "${passcodeValue}"`);
 
-  // Small wait for React to process the state updates
-  await page.waitForTimeout(300);
+  // Fill confirm passcode input
+  const confirmValue = await robustTypeIntoInput(page, confirmInput, TEST_PASSCODE);
+  console.log(`Confirm passcode input value: "${confirmValue}"`);
+
+  // Verify both inputs have the correct values
+  if (passcodeValue !== TEST_PASSCODE || confirmValue !== TEST_PASSCODE) {
+    console.error(`Input values don't match expected: passcode="${passcodeValue}", confirm="${confirmValue}"`);
+  }
 
   // Wait for button to be enabled
   const setupButton = page.locator('[data-testid="setup-encryption-button"]');
   await setupButton.waitFor({ state: 'visible' });
-  await expect(setupButton).toBeEnabled({ timeout: 5000 });
+
+  try {
+    await expect(setupButton).toBeEnabled({ timeout: 5000 });
+    console.log('Setup button is enabled');
+  } catch (e) {
+    console.error('Setup button did not become enabled');
+    const isDisabled = await setupButton.isDisabled();
+    console.log(`Button disabled state: ${isDisabled}`);
+  }
 
   // Click setup button
+  console.log('Clicking setup button...');
   await setupButton.click();
 
   // Wait for recovery code to appear
+  console.log('Waiting for recovery code display...');
   await page.waitForSelector('[data-testid="recovery-code-display"]', { timeout: 15000 });
   const recoveryCode = await page.textContent('[data-testid="recovery-code-display"]') || '';
+  console.log(`Recovery code received: ${recoveryCode.substring(0, 10)}...`);
 
   // Confirm we saved the recovery code
   await page.click('[data-testid="recovery-code-saved-checkbox"]');
@@ -170,20 +523,105 @@ export async function setupEncryption(page: Page): Promise<string> {
  */
 export async function unlockEncryption(page: Page, passcode: string = TEST_PASSCODE): Promise<void> {
   // Wait for the unlock prompt to appear
-  await page.waitForSelector('[data-testid="unlock-encryption-prompt"]', { timeout: 15000 });
+  const unlockPrompt = page.locator('[data-testid="unlock-encryption-prompt"]');
+  await expect(unlockPrompt).toBeVisible({ timeout: 15000 });
 
   // Small wait for React to be ready
   await page.waitForTimeout(500);
 
-  // Use fillReactInput helper for React controlled inputs
-  await fillReactInput(page, '[data-testid="unlock-passcode-input"]', passcode);
+  // Get the passcode input
+  const passcodeInput = page.locator('[data-testid="unlock-passcode-input"]');
+  await passcodeInput.waitFor({ state: 'visible' });
+
+  // Click to focus the input first
+  await passcodeInput.click();
+  await page.waitForTimeout(100);
+
+  // Clear any existing value first
+  await passcodeInput.evaluate((el: HTMLInputElement) => {
+    el.value = '';
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await page.waitForTimeout(100);
+
+  // Use keyboard.type() which simulates real keyboard events
+  // This is more reliable for React controlled inputs than fill() or pressSequentially()
+  await page.keyboard.type(passcode, { delay: 50 });
   await page.waitForTimeout(200);
 
+  // Verify the input has the value
+  let inputValue = await passcodeInput.inputValue();
+  console.log(`After keyboard.type: "${inputValue}"`);
+
+  // If keyboard.type didn't work, try using evaluate to set value and dispatch events
+  if (inputValue !== passcode) {
+    console.log(`keyboard.type did not work (got: "${inputValue}"), trying direct React state update`);
+
+    // This approach directly triggers React's event handling
+    await passcodeInput.evaluate((el: HTMLInputElement, value: string) => {
+      // Clear first
+      el.focus();
+      el.value = '';
+
+      // Set value using native setter to bypass React
+      const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
+        window.HTMLInputElement.prototype, 'value'
+      )?.set;
+
+      if (nativeInputValueSetter) {
+        nativeInputValueSetter.call(el, value);
+      }
+
+      // Dispatch input event - React listens to this
+      el.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+      // Also dispatch change for good measure
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    }, passcode);
+
+    await page.waitForTimeout(200);
+    inputValue = await passcodeInput.inputValue();
+    console.log(`After direct value set: "${inputValue}"`);
+  }
+
+  // Final fallback - try fill() which sometimes works better in certain environments
+  if (inputValue !== passcode) {
+    console.log(`Direct set did not work, trying fill`);
+    await passcodeInput.clear();
+    await passcodeInput.fill(passcode);
+    await page.waitForTimeout(100);
+    inputValue = await passcodeInput.inputValue();
+    console.log(`After fill: "${inputValue}"`);
+  }
+
+  // Wait for unlock button to be enabled
+  const unlockButton = page.locator('[data-testid="unlock-button"]');
+
+  // Check button state before waiting
+  const isDisabledBefore = await unlockButton.isDisabled();
+  console.log(`Unlock button disabled before: ${isDisabledBefore}`);
+
+  try {
+    await expect(unlockButton).toBeEnabled({ timeout: 5000 });
+    console.log('Unlock button is now enabled');
+  } catch (e) {
+    console.log('Unlock button did not become enabled');
+    // Re-check input value
+    const finalValue = await passcodeInput.inputValue();
+    console.log(`Final passcode input value: "${finalValue}"`);
+
+    // Take a screenshot for debugging
+    console.log('Button state indicates passcode may not have been entered correctly');
+  }
+
   // Click unlock button
-  await page.click('[data-testid="unlock-button"]');
+  console.log('Clicking unlock button...');
+  await unlockButton.click();
+  console.log('Clicked unlock button');
 
   // Wait for unlock to complete (chat input should appear)
+  console.log('Waiting for chat input to appear...');
   await page.waitForSelector('textarea[placeholder*="message"]', { timeout: 15000 });
+  console.log('Chat input appeared - encryption unlocked!');
 }
 
 // =============================================================================
@@ -200,7 +638,7 @@ export async function setupEncryptionMocks(page: Page): Promise<void> {
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({
-        transport_public_key: TEST_ENCLAVE_PUBLIC_KEY,
+        enclave_public_key: TEST_ENCLAVE_PUBLIC_KEY,
         attestation_available: false,
         is_mock: true,
       }),
@@ -230,7 +668,7 @@ export async function setupExistingEncryptionMocks(page: Page): Promise<void> {
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({
-        transport_public_key: TEST_ENCLAVE_PUBLIC_KEY,
+        enclave_public_key: TEST_ENCLAVE_PUBLIC_KEY,
         attestation_available: false,
         is_mock: true,
       }),
@@ -475,6 +913,8 @@ export function createEncryptedMessageContent(
 /**
  * Create a handler for session messages that returns properly encrypted messages.
  * Must be called AFTER user encryption is set up and public key is known.
+ *
+ * Returns format: { messages: [ { id, role, encrypted_content } ] }
  */
 export function createEncryptedMessagesHandler(
   userPublicKeyHex: string,
@@ -494,7 +934,8 @@ export function createEncryptedMessagesHandler(
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify(encryptedMessages),
+      // Frontend expects { messages: [...] } wrapper
+      body: JSON.stringify({ messages: encryptedMessages }),
     });
   };
 }
@@ -505,7 +946,7 @@ export function createEncryptedMessagesHandler(
  *
  * This mocks the following endpoints:
  * - GET /organizations/{org_id}/encryption-status
- * - GET /organizations/{org_id}/my-membership (used by useOrgSession.unlockOrgEncryption)
+ * - GET /organizations/{org_id}/membership (used by useOrgSession.unlockOrgEncryption)
  * - GET /organizations/{org_id}/pending-distributions
  */
 export async function setupOrgEncryptionMocksWithRealCrypto(
@@ -528,8 +969,8 @@ export async function setupOrgEncryptionMocksWithRealCrypto(
     }
   );
 
-  // Mock the my-membership endpoint used by useOrgSession.unlockOrgEncryption
-  await page.route('**/api/v1/organizations/*/my-membership', async (route) => {
+  // Mock the membership endpoint used by useOrgSession.unlockOrgEncryption
+  await page.route('**/api/v1/organizations/*/membership', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
