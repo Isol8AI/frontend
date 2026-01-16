@@ -32,7 +32,12 @@ test.describe('Organizations', () => {
         await route.fulfill({
           status: 200,
           contentType: 'application/json',
-          body: JSON.stringify([]),
+          body: JSON.stringify({
+            sessions: [],
+            total: 0,
+            limit: 50,
+            offset: 0,
+          }),
         });
       } else {
         await route.continue();
@@ -71,12 +76,18 @@ test.describe('Organizations', () => {
 
     await page.route('**/api/v1/chat/sessions', async (route) => {
       sessionCalls.push(route.request().url());
+      const sessions = [
+        { id: 'session-1', name: 'Test Session', created_at: new Date().toISOString() },
+      ];
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify([
-          { id: 'session-1', name: 'Test Session', created_at: new Date().toISOString() },
-        ]),
+        body: JSON.stringify({
+          sessions: sessions,
+          total: sessions.length,
+          limit: 50,
+          offset: 0,
+        }),
       });
     });
 

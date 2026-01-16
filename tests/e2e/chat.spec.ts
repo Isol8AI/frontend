@@ -3,11 +3,8 @@ import { signInWithClerk } from './fixtures/auth.fixture.js';
 import {
   setupEncryption,
   unlockEncryption,
-  setupEncryptionMocks,
-  mockKeyCreation,
   createEncryptedStreamHandler,
   TEST_ENCLAVE_PUBLIC_KEY,
-  TEST_PASSCODE,
 } from './fixtures/encryption.fixture.js';
 
 const DEFAULT_TIMEOUT = 15000;

@@ -185,7 +185,7 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
           );
 
           const decryptedContents =
-            encryption.decryptStoredMessages(encryptedMessages);
+            encryption.decryptStoredMessages(encryptedMessages, isOrgContext);
 
           const loadedMessages: ChatMessage[] = data.messages.map(
             (
@@ -307,7 +307,8 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
                 historyMessages.map((m) => ({
                   role: m.role,
                   encrypted_content: m.encryptedPayload!,
-                }))
+                })),
+                isOrgContext
               )
             : [];
 

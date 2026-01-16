@@ -259,6 +259,68 @@ test.describe.serial('Organization Encryption Admin Flow', () => {
     }
   });
 
+  test('Admin: can set up org encryption', async ({ page }) => {
+    await page.goto('/');
+
+    // Set up or unlock personal encryption first
+    await ensureEncryptionReady(page);
+
+    // Get user's org from memberships
+    const org = await getUserOrgFromMemberships(page);
+    if (!org) {
+      test.skip(true, 'User is not in any organization');
+      return;
+    }
+
+    if (!org.isAdmin) {
+      test.skip(true, 'User is not an org admin');
+      return;
+    }
+
+    // Navigate to org encryption page
+    await page.goto(`/org/${org.orgId}/settings/encryption`);
+    await page.waitForLoadState('networkidle');
+
+    // Check if org already has encryption (skip setup if so)
+    const enabledBadge = page.locator('[data-testid="org-encryption-enabled-badge"]');
+    if (await enabledBadge.isVisible({ timeout: 2000 }).catch(() => false)) {
+      console.log('Org encryption already set up, skipping setup test');
+      return;
+    }
+
+    // Wait for setup form to be visible
+    const setupPrompt = page.locator('[data-testid="setup-org-encryption-prompt"]');
+    await expect(setupPrompt).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+
+    // Fill passcode inputs
+    const passcodeInput = page.locator('[data-testid="org-passcode-input"]');
+    const confirmInput = page.locator('[data-testid="org-passcode-confirm-input"]');
+
+    await passcodeInput.waitFor({ state: 'visible' });
+    await confirmInput.waitFor({ state: 'visible' });
+
+    // Use keyboard.type for reliable React input filling
+    await passcodeInput.click();
+    await page.keyboard.type(TEST_PASSCODE, { delay: 50 });
+
+    await confirmInput.click();
+    await page.keyboard.type(TEST_PASSCODE, { delay: 50 });
+
+    // Verify inputs have values
+    const passcodeValue = await passcodeInput.inputValue();
+    const confirmValue = await confirmInput.inputValue();
+    console.log(`Passcode input: "${passcodeValue}", Confirm input: "${confirmValue}"`);
+
+    // Click create keys button
+    const createButton = page.locator('[data-testid="create-org-keys-button"]');
+    await expect(createButton).toBeEnabled({ timeout: 5000 });
+    await createButton.click();
+
+    // Verify success - enabled badge should appear
+    await expect(enabledBadge).toBeVisible({ timeout: 15000 });
+    console.log('Org encryption setup successful!');
+  });
+
   test('Admin: can view pending key distributions', async ({ page }) => {
     await page.goto('/');
 

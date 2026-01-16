@@ -108,13 +108,6 @@ export default function OrgEncryptionAuditPage({ params }: Props) {
     }
   };
 
-  // Format event type for display
-  const formatEventType = (eventType: string) => {
-    return eventType
-      .split('_')
-      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-      .join(' ');
-  };
 
   // Format timestamp
   const formatTimestamp = (timestamp: string) => {

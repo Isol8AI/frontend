@@ -10,8 +10,6 @@ import { randomBytes } from '@noble/ciphers/webcrypto';
  */
 export const TEST_PASSCODE = '123456';
 
-const BACKEND_URL = 'http://localhost:8000/api/v1';
-
 // =============================================================================
 // Real Backend Helpers
 // =============================================================================
@@ -213,42 +211,6 @@ export async function ensureEncryptionReady(page: Page): Promise<void> {
   await expect(chatTextarea).toBeVisible({ timeout: 15000 });
 }
 
-/**
- * Helper to fill React controlled inputs/textareas that don't respond to regular fill/type.
- * This sets the value directly and dispatches proper events that React can detect.
- */
-async function fillReactInput(page: Page, selector: string, value: string): Promise<void> {
-  await page.evaluate(({ selector, value }) => {
-    const element = document.querySelector(selector) as HTMLInputElement | HTMLTextAreaElement;
-    if (element) {
-      // Focus the element first
-      element.focus();
-
-      // Get the appropriate prototype based on element type
-      const prototype = element.tagName === 'TEXTAREA'
-        ? window.HTMLTextAreaElement.prototype
-        : window.HTMLInputElement.prototype;
-
-      const nativeValueSetter = Object.getOwnPropertyDescriptor(prototype, 'value')?.set;
-      if (nativeValueSetter) {
-        nativeValueSetter.call(element, value);
-      }
-
-      // React 16+ uses a special property to track input events
-      // We need to trigger the input event properly
-      const inputEvent = new InputEvent('input', {
-        bubbles: true,
-        cancelable: true,
-        inputType: 'insertText',
-        data: value,
-      });
-      element.dispatchEvent(inputEvent);
-
-      // Also dispatch change event for completeness
-      element.dispatchEvent(new Event('change', { bubbles: true }));
-    }
-  }, { selector, value });
-}
 
 /**
  * Robustly type into a React controlled input using multiple fallback methods.
@@ -492,7 +454,7 @@ export async function setupEncryption(page: Page): Promise<string> {
   try {
     await expect(setupButton).toBeEnabled({ timeout: 5000 });
     console.log('Setup button is enabled');
-  } catch (e) {
+  } catch {
     console.error('Setup button did not become enabled');
     const isDisabled = await setupButton.isDisabled();
     console.log(`Button disabled state: ${isDisabled}`);
@@ -603,7 +565,7 @@ export async function unlockEncryption(page: Page, passcode: string = TEST_PASSC
   try {
     await expect(unlockButton).toBeEnabled({ timeout: 5000 });
     console.log('Unlock button is now enabled');
-  } catch (e) {
+  } catch {
     console.log('Unlock button did not become enabled');
     // Re-check input value
     const finalValue = await passcodeInput.inputValue();

@@ -20,7 +20,7 @@ export const handlers = [
   }),
 
   http.get(`${API_BASE}/chat/sessions`, () => {
-    return HttpResponse.json([
+    const sessions = [
       {
         id: 'session_1',
         name: 'Test Conversation',
@@ -31,7 +31,14 @@ export const handlers = [
         name: 'Another Chat',
         created_at: new Date(Date.now() - ONE_DAY_MS).toISOString(),
       },
-    ]);
+    ];
+    // Return paginated response format
+    return HttpResponse.json({
+      sessions: sessions,
+      total: sessions.length,
+      limit: 50,
+      offset: 0,
+    });
   }),
 
   http.get(`${API_BASE}/chat/sessions/:sessionId/messages`, ({ params }) => {

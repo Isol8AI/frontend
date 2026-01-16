@@ -86,7 +86,9 @@ export function OrganizationProvider({ children }: OrganizationProviderProps): R
       }
 
       try {
-        const token = await getToken();
+        // Pass organizationId to get org-scoped JWT with org claims (org_id, org_role, etc.)
+        // This is critical: without it, JWT has no org claims and backend can't verify membership
+        const token = await getToken({ organizationId: organization.id });
         if (!token) return;
 
         // Ensure user exists before org sync (prevents FK violation race condition)

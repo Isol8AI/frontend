@@ -22,14 +22,12 @@ import {
   reEncryptHistoryForTransport,
   decryptOrgKey,
   encryptOrgKeyForMember,
-  type SerializedEncryptedPayload,
   type EncryptedMessage,
 } from '@/lib/crypto/message-crypto';
 import {
   generateX25519Keypair,
   encryptToPublicKey,
   bytesToHex,
-  hexToBytes,
 } from '@/lib/crypto/primitives';
 
 // =============================================================================
@@ -514,8 +512,8 @@ describe('Integration', () => {
     const enclavePublicKey = bytesToHex(enclave.publicKey);
     const transportPrivateKey = bytesToHex(transport.privateKey);
 
-    // 1. Client sends message to enclave
-    const outgoing = encryptMessageToEnclave(enclavePublicKey, 'What is 2+2?');
+    // 1. Client sends message to enclave (outgoing message encrypted for enclave)
+    encryptMessageToEnclave(enclavePublicKey, 'What is 2+2?');
 
     // 2. Enclave processes and sends response (simulated)
     const responsePayload = encryptToPublicKey(

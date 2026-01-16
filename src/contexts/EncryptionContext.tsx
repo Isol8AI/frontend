@@ -27,7 +27,6 @@ import { BACKEND_URL } from '@/lib/api';
 import {
   generateAndEncryptKeys,
   decryptPrivateKeyFromResponse,
-  decryptPrivateKeyWithRecovery,
   toStoreKeysRequest,
   type FetchKeysResponse,
 } from '@/lib/crypto/key-management';
@@ -40,7 +39,15 @@ import {
   type SerializedEncryptedPayload,
   type EncryptedMessage,
 } from '@/lib/crypto/message-crypto';
-import { generateX25519Keypair, bytesToHex } from '@/lib/crypto';
+import {
+  generateX25519Keypair,
+  bytesToHex,
+  hexToBytes,
+  generateSalt,
+  deriveKeyFromPasscode,
+  encryptAesGcm,
+  encryptToPublicKey,
+} from '@/lib/crypto';
 
 // =============================================================================
 // Types
@@ -79,6 +86,8 @@ export interface EncryptionContextValue {
   unlockWithRecovery: (recoveryCode: string) => Promise<void>;
   /** Lock keys (clear from memory) */
   lockKeys: () => void;
+  /** Set up organization encryption (admin only) */
+  setupOrgEncryption: (orgId: string, passcode: string) => Promise<void>;
   /** Unlock organization key */
   unlockOrgKey: (encryptedOrgKey: SerializedEncryptedPayload) => void;
   /** Lock organization key */
@@ -89,11 +98,12 @@ export interface EncryptionContextValue {
   encryptMessage: (message: string) => SerializedEncryptedPayload;
   /** Decrypt a transport response from enclave */
   decryptTransportResponse: (payload: SerializedEncryptedPayload) => string;
-  /** Decrypt stored messages from database */
-  decryptStoredMessages: (messages: EncryptedMessage[]) => string[];
-  /** Re-encrypt history for transport to enclave */
+  /** Decrypt stored messages from database. useOrgKey determines which key to use. */
+  decryptStoredMessages: (messages: EncryptedMessage[], useOrgKey: boolean) => string[];
+  /** Re-encrypt history for transport to enclave. useOrgKey determines which key to use. */
   prepareHistoryForTransport: (
-    messages: EncryptedMessage[]
+    messages: EncryptedMessage[],
+    useOrgKey: boolean
   ) => SerializedEncryptedPayload[];
   /** Generate ephemeral transport keypair */
   generateTransportKeypair: () => TransportKeypair;
@@ -478,6 +488,95 @@ export function EncryptionProvider({ children }: EncryptionProviderProps) {
     console.log('=== confirmSetup SUCCESS ===');
   }, [pendingSetup]);
 
+  // Set up organization encryption (admin only)
+  const setupOrgEncryption = useCallback(
+    async (orgId: string, passcode: string): Promise<void> => {
+      console.log('=== setupOrgEncryption START ===');
+      console.log('orgId:', orgId);
+
+      // 1. Check personal keys are unlocked
+      if (!privateKeyRef.current || !state.publicKey) {
+        throw new Error('Personal encryption must be unlocked first');
+      }
+
+      if (passcode.length < 6) {
+        throw new Error('Organization passcode must be at least 6 characters');
+      }
+
+      try {
+        // 2. Generate org keypair
+        console.log('Generating org keypair...');
+        const orgKeypair = generateX25519Keypair();
+        const orgPublicKey = bytesToHex(orgKeypair.publicKey);
+        const orgPrivateKey = orgKeypair.privateKey;
+        console.log('Org public key:', orgPublicKey.substring(0, 20) + '...');
+
+        // 3. Encrypt org private key with org passcode (Argon2id + AES-GCM)
+        console.log('Encrypting org private key with passcode...');
+        const salt = generateSalt(32);
+        const derivedKey = await deriveKeyFromPasscode(passcode, salt);
+        const encrypted = encryptAesGcm(derivedKey, orgPrivateKey);
+
+        // 4. Encrypt org private key TO admin's personal public key
+        console.log('Encrypting org key to admin public key...');
+        const adminPublicKey = hexToBytes(state.publicKey);
+        const adminEncryptedOrgKey = encryptToPublicKey(
+          adminPublicKey,
+          orgPrivateKey,
+          'org-key-distribution'
+        );
+
+        // 5. Call backend API
+        const token = await getToken();
+        if (!token) {
+          throw new Error('Not authenticated');
+        }
+
+        console.log('Calling backend API...');
+        const res = await fetch(`${BACKEND_URL}/organizations/${orgId}/keys`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            org_public_key: orgPublicKey,
+            admin_encrypted_private_key: bytesToHex(encrypted.ciphertext),
+            admin_iv: bytesToHex(encrypted.iv),
+            admin_tag: bytesToHex(encrypted.authTag),
+            admin_salt: bytesToHex(salt),
+            admin_member_encrypted_key: {
+              ephemeral_public_key: bytesToHex(adminEncryptedOrgKey.ephemeralPublicKey),
+              iv: bytesToHex(adminEncryptedOrgKey.iv),
+              ciphertext: bytesToHex(adminEncryptedOrgKey.ciphertext),
+              auth_tag: bytesToHex(adminEncryptedOrgKey.authTag),
+              hkdf_salt: bytesToHex(adminEncryptedOrgKey.hkdfSalt),
+            },
+          }),
+        });
+
+        console.log('API response status:', res.status);
+
+        if (!res.ok) {
+          const error = await res.json().catch(() => ({}));
+          throw new Error(error.detail || 'Failed to create org encryption keys');
+        }
+
+        // 6. Store org private key in memory
+        console.log('Storing org private key in memory...');
+        orgPrivateKeyRef.current = bytesToHex(orgPrivateKey);
+        setIsOrgUnlocked(true);
+
+        console.log('=== setupOrgEncryption SUCCESS ===');
+      } catch (error) {
+        console.error('=== setupOrgEncryption FAILED ===');
+        console.error('Error:', error);
+        throw error;
+      }
+    },
+    [getToken, state.publicKey]
+  );
+
   // Unlock organization key
   const unlockOrgKey = useCallback(
     (encryptedOrgKey: SerializedEncryptedPayload) => {
@@ -522,11 +621,11 @@ export function EncryptionProvider({ children }: EncryptionProviderProps) {
 
   // Decrypt stored messages
   const decryptStoredMessagesWrapper = useCallback(
-    (messages: EncryptedMessage[]): string[] => {
-      // Use org key if available, otherwise personal key
-      const key = orgPrivateKeyRef.current || privateKeyRef.current;
+    (messages: EncryptedMessage[], useOrgKey: boolean): string[] => {
+      // Select key based on explicit context
+      const key = useOrgKey ? orgPrivateKeyRef.current : privateKeyRef.current;
       if (!key) {
-        throw new Error('Keys not unlocked');
+        throw new Error(useOrgKey ? 'Org keys not unlocked' : 'Personal keys not unlocked');
       }
 
       return messages.map((msg) =>
@@ -538,10 +637,11 @@ export function EncryptionProvider({ children }: EncryptionProviderProps) {
 
   // Re-encrypt history for transport
   const prepareHistoryForTransport = useCallback(
-    (messages: EncryptedMessage[]): SerializedEncryptedPayload[] => {
-      const key = orgPrivateKeyRef.current || privateKeyRef.current;
+    (messages: EncryptedMessage[], useOrgKey: boolean): SerializedEncryptedPayload[] => {
+      // Select key based on explicit context
+      const key = useOrgKey ? orgPrivateKeyRef.current : privateKeyRef.current;
       if (!key) {
-        throw new Error('Keys not unlocked');
+        throw new Error(useOrgKey ? 'Org keys not unlocked' : 'Personal keys not unlocked');
       }
       if (!state.enclavePublicKey) {
         throw new Error('Enclave public key not available');
@@ -593,6 +693,7 @@ export function EncryptionProvider({ children }: EncryptionProviderProps) {
       unlockKeys,
       unlockWithRecovery,
       lockKeys,
+      setupOrgEncryption,
       unlockOrgKey,
       lockOrgKey,
       isOrgUnlocked,
@@ -613,6 +714,7 @@ export function EncryptionProvider({ children }: EncryptionProviderProps) {
       unlockKeys,
       unlockWithRecovery,
       lockKeys,
+      setupOrgEncryption,
       unlockOrgKey,
       lockOrgKey,
       isOrgUnlocked,

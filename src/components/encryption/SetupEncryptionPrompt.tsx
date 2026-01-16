@@ -42,11 +42,12 @@ export function SetupEncryptionPrompt({ onComplete }: Props) {
   const instanceIdRef = useRef(++instanceCounter);
 
   useEffect(() => {
-    console.log(`[SetupEncryptionPrompt #${instanceIdRef.current}] MOUNTED`);
+    const instanceId = instanceIdRef.current;
+    console.log(`[SetupEncryptionPrompt #${instanceId}] MOUNTED`);
     isMountedRef.current = true;
 
     return () => {
-      console.log(`[SetupEncryptionPrompt #${instanceIdRef.current}] UNMOUNTED`);
+      console.log(`[SetupEncryptionPrompt #${instanceId}] UNMOUNTED`);
       isMountedRef.current = false;
     };
   }, []);

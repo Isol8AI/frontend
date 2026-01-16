@@ -10,8 +10,7 @@
 'use client';
 
 import { useEffect, useState, use } from 'react';
-import { useRouter } from 'next/navigation';
-import { useAuth, useOrganization } from '@clerk/nextjs';
+import { useOrganization } from '@clerk/nextjs';
 import { useOrgSession } from '@/hooks/useOrgSession';
 import { useEncryption } from '@/hooks/useEncryption';
 import { Button } from '@/components/ui/button';
@@ -25,10 +24,8 @@ interface Props {
 export default function OrgEncryptionSettingsPage({ params }: Props) {
   // In Next.js 15+, params is a Promise - use React's use() hook
   const resolvedParams = use(params);
-  const router = useRouter();
-  const { isSignedIn } = useAuth();
   const { organization, membership } = useOrganization();
-  const { state: orgState, getOrgEncryptionStatus } = useOrgSession();
+  const { getOrgEncryptionStatus } = useOrgSession();
   const encryption = useEncryption();
 
   const [isLoading, setIsLoading] = useState(true);

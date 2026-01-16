@@ -67,7 +67,7 @@ export function UnlockEncryptionPrompt({ onUnlocked, compact = false }: Props) {
         await encryption.unlockWithRecovery(recoveryCode);
       }
       onUnlocked?.();
-    } catch (err) {
+    } catch {
       setLocalError(
         mode === 'passcode' ? 'Incorrect passcode' : 'Invalid recovery code'
       );

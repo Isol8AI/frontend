@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useUser } from "@clerk/nextjs";
 import Link from "next/link";
 
@@ -9,12 +9,13 @@ import { MessageList } from "./MessageList";
 import { ModelSelector } from "./ModelSelector";
 import { useApi } from "@/lib/api";
 import { useEncryption } from "@/hooks/useEncryption";
-import { useChat, type ChatMessage } from "@/hooks/useChat";
+import { useChat } from "@/hooks/useChat";
+import { useOrgContext } from "@/components/providers/OrganizationProvider";
 import { SetupEncryptionPrompt } from "@/components/encryption/SetupEncryptionPrompt";
 import { UnlockEncryptionPrompt } from "@/components/encryption/UnlockEncryptionPrompt";
 import { EncryptionStatusBadge } from "@/components/encryption/EncryptionStatusBadge";
 import { Button } from "@/components/ui/button";
-import { Settings, Shield } from "lucide-react";
+import { Settings } from "lucide-react";
 
 interface Model {
   id: string;
@@ -61,7 +62,9 @@ export function ChatWindow(): React.ReactElement {
   const api = useApi();
   const { user } = useUser();
   const encryption = useEncryption();
+  const { orgId } = useOrgContext();
   const encryptedChat = useChat({
+    orgId,
     onSessionChange: () => {
       window.dispatchEvent(new CustomEvent("sessionUpdated"));
     },
@@ -95,6 +98,18 @@ export function ChatWindow(): React.ReactElement {
     }
     loadModels();
   }, [user, api]);
+
+  // Track previous orgId to detect context changes
+  const prevOrgIdRef = useRef<string | null | undefined>(undefined);
+
+  // Clear session when org context changes (but not on initial mount)
+  useEffect(() => {
+    // Skip initial mount (when prevOrgIdRef is undefined)
+    if (prevOrgIdRef.current !== undefined && prevOrgIdRef.current !== orgId) {
+      encryptedChat.clearSession();
+    }
+    prevOrgIdRef.current = orgId;
+  }, [orgId, encryptedChat]);
 
   // Handle new chat event
   useEffect(() => {

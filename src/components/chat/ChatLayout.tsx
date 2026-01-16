@@ -44,7 +44,8 @@ export function ChatLayout({ children }: ChatLayoutProps): React.ReactElement {
     setIsLoadingSessions(true);
     try {
       const data = await apiRef.current.get("/chat/sessions");
-      setSessions(data as Session[]);
+      // Backend returns paginated response: { sessions: [...], total, limit, offset }
+      setSessions((data as { sessions: Session[] }).sessions);
     } catch (err) {
       console.error("Failed to load sessions:", err);
     } finally {
@@ -66,18 +67,14 @@ export function ChatLayout({ children }: ChatLayoutProps): React.ReactElement {
       .catch((err) => console.error("User sync failed:", err));
   }, [isSignedIn, loadSessions]);
 
-  useEffect(() => {
-    if (isSignedIn) {
-      resetToNewChat();
-    }
-  }, [orgId, isSignedIn, resetToNewChat]);
+  // Note: We don't need a separate useEffect for orgId changes because
+  // OrganizationProvider dispatches 'orgContextChanged' event which is
+  // handled below. Having both would cause duplicate resets.
 
   // Stable event listener setup using refs
   useEffect(() => {
     const handleOrgContextChanged = (): void => {
-      setCurrentSessionId(null);
-      dispatchNewChatEvent();
-      loadSessions();
+      resetToNewChat();
     };
 
     const handleSessionUpdated = (): void => {
@@ -91,7 +88,7 @@ export function ChatLayout({ children }: ChatLayoutProps): React.ReactElement {
       window.removeEventListener("orgContextChanged", handleOrgContextChanged);
       window.removeEventListener("sessionUpdated", handleSessionUpdated);
     };
-  }, [loadSessions]);
+  }, [loadSessions, resetToNewChat]);
 
   function handleNewChat(): void {
     setCurrentSessionId(null);

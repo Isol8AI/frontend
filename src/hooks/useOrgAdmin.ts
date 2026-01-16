@@ -43,6 +43,18 @@ export interface PendingMember {
   joinedAt: Date;
 }
 
+/** Member who needs to set up personal encryption before receiving org key */
+export interface MemberNeedingSetup {
+  /** Membership record ID */
+  membershipId: string;
+  /** User ID */
+  userId: string;
+  /** User's role in the org */
+  role: string;
+  /** When user joined the org */
+  joinedAt: Date;
+}
+
 export interface OrgMember {
   /** Membership record ID */
   membershipId: string;
@@ -66,8 +78,10 @@ export interface DistributionProgress {
 }
 
 export interface UseOrgAdminReturn {
-  /** Members pending key distribution */
+  /** Members pending key distribution (have personal keys, ready for org key) */
   pendingMembers: PendingMember[];
+  /** Members who need to set up personal encryption first */
+  membersNeedingSetup: MemberNeedingSetup[];
   /** Load pending members for an org */
   loadPendingMembers: (orgId: string) => Promise<void>;
 
@@ -109,6 +123,7 @@ export function useOrgAdmin(): UseOrgAdminReturn {
   const encryption = useEncryption();
 
   const [pendingMembers, setPendingMembers] = useState<PendingMember[]>([]);
+  const [membersNeedingSetup, setMembersNeedingSetup] = useState<MemberNeedingSetup[]>([]);
   const [members, setMembers] = useState<OrgMember[]>([]);
   const [adminOrgKey, setAdminOrgKey] = useState<SerializedEncryptedPayload | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -142,8 +157,10 @@ export function useOrgAdmin(): UseOrgAdminReturn {
         }
 
         const data = await res.json();
+
+        // Members ready for key distribution (have personal keys)
         setPendingMembers(
-          data.pending.map((p: {
+          (data.ready_for_distribution || []).map((p: {
             membership_id: string;
             user_id: string;
             user_public_key: string;
@@ -153,6 +170,21 @@ export function useOrgAdmin(): UseOrgAdminReturn {
             membershipId: p.membership_id,
             userId: p.user_id,
             userPublicKey: p.user_public_key,
+            role: p.role,
+            joinedAt: new Date(p.joined_at),
+          }))
+        );
+
+        // Members who need to set up personal encryption first
+        setMembersNeedingSetup(
+          (data.needs_personal_setup || []).map((p: {
+            membership_id: string;
+            user_id: string;
+            role: string;
+            joined_at: string;
+          }) => ({
+            membershipId: p.membership_id,
+            userId: p.user_id,
             role: p.role,
             joinedAt: new Date(p.joined_at),
           }))
@@ -480,6 +512,7 @@ export function useOrgAdmin(): UseOrgAdminReturn {
 
   return {
     pendingMembers,
+    membersNeedingSetup,
     loadPendingMembers,
     distributeToMember,
     distributeToAll,

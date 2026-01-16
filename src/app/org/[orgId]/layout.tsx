@@ -42,6 +42,11 @@ export default function OrgLayout({ children, params }: OrgLayoutProps) {
 
     // If org matches URL param, we're good
     if (organization && organization.id === resolvedParams.orgId) {
+      // These setState calls are intentional - we're using the effect to synchronize
+      // the validation/switching state with the external Clerk org state.
+      // This is a valid use case per React docs: "Subscribe for updates from some
+      // external system, calling setState in a callback function when external state changes"
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setIsValidating(false);
       setIsSwitching(false);
       return;

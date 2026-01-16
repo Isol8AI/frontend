@@ -10,9 +10,8 @@
 'use client';
 
 import { useEffect, useState, useCallback, use } from 'react';
-import { useRouter } from 'next/navigation';
-import { useAuth, useOrganization } from '@clerk/nextjs';
-import { useOrgAdmin, type PendingMember, type OrgMember } from '@/hooks/useOrgAdmin';
+import { useOrganization } from '@clerk/nextjs';
+import { useOrgAdmin } from '@/hooks/useOrgAdmin';
 import { useEncryption } from '@/hooks/useEncryption';
 import { Button } from '@/components/ui/button';
 import {
@@ -36,8 +35,6 @@ interface Props {
 export default function OrgMembersPage({ params }: Props) {
   // In Next.js 15+, params is a Promise - use React's use() hook
   const resolvedParams = use(params);
-  const router = useRouter();
-  const { isSignedIn } = useAuth();
   const { organization, membership } = useOrganization();
   const encryption = useEncryption();
   const admin = useOrgAdmin();
@@ -80,6 +77,7 @@ export default function OrgMembersPage({ params }: Props) {
     } else {
       setIsLoading(false);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- admin functions are stable
   }, [resolvedParams.orgId, isAdmin, encryption.state.isUnlocked]);
 
   // Handle distribution initiation
@@ -216,8 +214,6 @@ export default function OrgMembersPage({ params }: Props) {
     );
   }
 
-  // Members without org key (need redistribution)
-  const membersNeedingKey = admin.members.filter((m) => !m.hasOrgKey && m.hasPersonalKeys);
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
