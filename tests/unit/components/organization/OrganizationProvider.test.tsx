@@ -29,7 +29,7 @@ describe('OrganizationProvider', () => {
     expect(screen.getByText('Test Content')).toBeInTheDocument();
   });
 
-  it('provides default context values when no organization', () => {
+  it('provides default context values when no organization (personal context is default)', () => {
     render(
       <OrganizationProvider>
         <TestConsumer />

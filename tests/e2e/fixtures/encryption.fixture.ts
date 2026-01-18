@@ -63,6 +63,67 @@ export async function setActiveOrg(page: Page, orgId: string): Promise<boolean> 
 }
 
 /**
+ * Clear the active organization in Clerk to return to personal context.
+ * Call this before tests that expect personal context.
+ */
+export async function clearActiveOrg(page: Page): Promise<boolean> {
+  try {
+    const result = await page.evaluate(async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const clerk = (window as any).Clerk;
+      if (!clerk) {
+        console.log('Clerk not available');
+        return { success: false, error: 'Clerk not available' };
+      }
+
+      // Wait for Clerk to be loaded before calling setActive
+      if (!clerk.loaded) {
+        // Wait for Clerk to load (max 5 seconds)
+        await new Promise<void>((resolve, reject) => {
+          const timeout = setTimeout(() => {
+            reject(new Error('Clerk did not load within 5 seconds'));
+          }, 5000);
+
+          clerk.addListener((event: { user?: unknown }) => {
+            if (event.user !== undefined) {
+              clearTimeout(timeout);
+              resolve();
+            }
+          });
+
+          // If already loaded, resolve immediately
+          if (clerk.loaded) {
+            clearTimeout(timeout);
+            resolve();
+          }
+        });
+      }
+
+      try {
+        await clerk.setActive({ organization: null });
+        console.log('Cleared active organization - now in personal context');
+        return { success: true };
+      } catch (e) {
+        console.error('Failed to clear active org:', e);
+        return { success: false, error: String(e) };
+      }
+    });
+
+    if (!result.success) {
+      console.error('Failed to clear active org:', result.error);
+      return false;
+    }
+
+    // Wait for Clerk to update
+    await page.waitForTimeout(500);
+    return true;
+  } catch (error) {
+    console.error('Error clearing active org:', error);
+    return false;
+  }
+}
+
+/**
  * Get the test user's organization memberships from Clerk.
  * Returns the first org if user is in any orgs.
  */
@@ -113,6 +174,115 @@ export async function getUserOrgFromMemberships(page: Page): Promise<UserOrg | n
   } catch (error) {
     console.error('Error getting org from memberships:', error);
     return null;
+  }
+}
+
+/**
+ * Create a new organization via Clerk and sync to backend.
+ * Returns the created org details.
+ */
+export async function createOrganization(page: Page, name?: string): Promise<{
+  orgId: string;
+  orgName: string;
+  orgSlug: string;
+}> {
+  const orgName = name || `Test Org ${Date.now()}`;
+
+  const result = await page.evaluate(async (orgNameParam) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const clerk = (window as any).Clerk;
+    if (!clerk) {
+      throw new Error('Clerk not available');
+    }
+
+    // Wait for Clerk to be loaded
+    if (!clerk.loaded) {
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          reject(new Error('Clerk did not load within 5 seconds'));
+        }, 5000);
+
+        const check = () => {
+          if (clerk.loaded) {
+            clearTimeout(timeout);
+            resolve();
+          } else {
+            setTimeout(check, 100);
+          }
+        };
+        check();
+      });
+    }
+
+    // Create organization
+    const org = await clerk.createOrganization({ name: orgNameParam });
+
+    // Sync to backend
+    const token = await clerk.session.getToken();
+    const slug = orgNameParam.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+
+    const syncResponse = await fetch('http://localhost:8000/api/v1/organizations/sync', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        org_id: org.id,
+        name: org.name,
+        slug: slug,
+      }),
+    });
+
+    if (!syncResponse.ok) {
+      console.warn(`Org sync returned ${syncResponse.status}, but org was created in Clerk`);
+    }
+
+    return {
+      orgId: org.id,
+      orgName: org.name,
+      orgSlug: slug,
+    };
+  }, orgName);
+
+  console.log(`Created organization: ${result.orgName} (${result.orgId})`);
+  return result;
+}
+
+/**
+ * Delete an organization via Clerk.
+ * Must be called with the org set as active.
+ */
+export async function deleteOrganization(page: Page, orgId: string): Promise<boolean> {
+  try {
+    // First set the org as active
+    await setActiveOrg(page, orgId);
+
+    const result = await page.evaluate(async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const clerk = (window as any).Clerk;
+      if (!clerk?.organization) {
+        return { success: false, error: 'No active organization' };
+      }
+
+      try {
+        await clerk.organization.destroy();
+        return { success: true };
+      } catch (e) {
+        return { success: false, error: String(e) };
+      }
+    });
+
+    if (!result.success) {
+      console.error('Failed to delete org:', result.error);
+      return false;
+    }
+
+    console.log(`Deleted organization: ${orgId}`);
+    return true;
+  } catch (error) {
+    console.error('Error deleting org:', error);
+    return false;
   }
 }
 
@@ -186,6 +356,10 @@ export async function getUserOrg(page: Page): Promise<UserOrg | null> {
  * Handles both new users (setup) and returning users (unlock).
  */
 export async function ensureEncryptionReady(page: Page): Promise<void> {
+  // Clear org context first - ensures tests start in personal context
+  // This is needed because Clerk persists org context across sessions
+  await clearActiveOrg(page);
+
   const setupPrompt = page.locator('[data-testid="setup-encryption-prompt"]');
   const unlockPrompt = page.locator('[data-testid="unlock-encryption-prompt"]');
   const chatTextarea = page.locator('textarea[placeholder*="message"]');
@@ -402,6 +576,10 @@ export async function resetEncryptionKeys(page: Page): Promise<void> {
  * prompt instead - in that case, we just unlock rather than failing.
  */
 export async function setupEncryption(page: Page): Promise<string> {
+  // Clear org context to ensure personal encryption setup flow
+  // This is needed because Clerk persists org context across sessions
+  await clearActiveOrg(page);
+
   // Reset any existing keys to ensure clean setup
   await resetEncryptionKeys(page);
 
@@ -473,6 +651,10 @@ export async function setupEncryption(page: Page): Promise<string> {
   // Confirm we saved the recovery code
   await page.click('[data-testid="recovery-code-saved-checkbox"]');
   await page.click('[data-testid="continue-button"]');
+
+  // Clear org context again after setup completes
+  // Clerk may restore org context during page state changes
+  await clearActiveOrg(page);
 
   // Wait for chat input to be visible (encryption is ready)
   await page.waitForSelector('textarea[placeholder*="message"]', { timeout: 10000 });
@@ -579,6 +761,10 @@ export async function unlockEncryption(page: Page, passcode: string = TEST_PASSC
   console.log('Clicking unlock button...');
   await unlockButton.click();
   console.log('Clicked unlock button');
+
+  // Clear org context after unlock completes
+  // Clerk may restore org context during page state changes
+  await clearActiveOrg(page);
 
   // Wait for unlock to complete (chat input should appear)
   console.log('Waiting for chat input to appear...');

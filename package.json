@@ -32,7 +32,8 @@
     "next": "16.1.1",
     "react": "19.2.3",
     "react-dom": "19.2.3",
-    "tailwind-merge": "^3.4.0"
+    "tailwind-merge": "^3.4.0",
+    "@huggingface/transformers": "^3.0.0"
   },
   "devDependencies": {
     "@clerk/testing": "^1.13.28",

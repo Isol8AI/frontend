@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, ReactNode, useContext, useEffect, useRef } from "react";
-import { useAuth, useOrganization, useOrganizationList } from "@clerk/nextjs";
+import { useAuth, useOrganization } from "@clerk/nextjs";
 
 import { BACKEND_URL } from "@/lib/api";
 
@@ -43,33 +43,14 @@ function dispatchOrgContextEvent(detail: {
 
 export function OrganizationProvider({ children }: OrganizationProviderProps): React.ReactElement {
   const { organization, membership, isLoaded: orgLoaded } = useOrganization();
-  const { getToken, isSignedIn, isLoaded: authLoaded } = useAuth();
-  const { setActive, userMemberships, isLoaded: membershipsLoaded } = useOrganizationList({
-    userMemberships: { infinite: true },
-  });
+  const { getToken, isSignedIn } = useAuth();
   const prevOrgIdRef = useRef<string | null | undefined>(undefined);
-  const hasAutoActivatedRef = useRef(false);
 
-  // Auto-activate first org when user signs in (if they have memberships)
-  // This makes org context the default, with personal mode secondary
-  useEffect(() => {
-    // Wait for all data to load
-    if (!authLoaded || !orgLoaded || !membershipsLoaded) return;
-    if (!isSignedIn) return;
+  // Personal context is the default - users can manually switch to an organization
+  // using the Clerk OrganizationSwitcher when they want to access org features.
+  // No auto-activation of organizations.
 
-    // Only auto-activate once per session
-    if (hasAutoActivatedRef.current) return;
-
-    // If no org is active and user has memberships, activate first org
-    if (!organization && userMemberships.data && userMemberships.data.length > 0 && setActive) {
-      hasAutoActivatedRef.current = true;
-      const firstOrg = userMemberships.data[0].organization;
-      console.log(`Auto-activating organization: ${firstOrg.name} (${firstOrg.id})`);
-      setActive({ organization: firstOrg.id });
-    }
-  }, [authLoaded, orgLoaded, membershipsLoaded, isSignedIn, organization, userMemberships.data, setActive]);
-
-  // Sync organization with backend when it changes
+  // Sync organization with backend when user manually switches to one
   useEffect(() => {
     if (!orgLoaded || !isSignedIn) return;
 

@@ -1,6 +1,6 @@
 import { test, expect, Page } from '@playwright/test';
 import { signInWithClerk } from './fixtures/auth.fixture.js';
-import { TEST_PASSCODE } from './fixtures/encryption.fixture.js';
+import { TEST_PASSCODE, clearActiveOrg } from './fixtures/encryption.fixture.js';
 
 const DEFAULT_TIMEOUT = 15000;
 
@@ -76,6 +76,10 @@ async function setupEncryptionViaUI(page: Page, passcode: string = TEST_PASSCODE
   await page.click('[data-testid="recovery-code-saved-checkbox"]');
   await page.click('[data-testid="continue-button"]');
 
+  // Clear org context after setup completes
+  // Clerk may restore org context during page state changes
+  await clearActiveOrg(page);
+
   // Wait for chat to be ready
   await page.waitForSelector('textarea[placeholder*="message"]', { timeout: DEFAULT_TIMEOUT });
 
@@ -95,6 +99,10 @@ async function unlockEncryptionViaUI(page: Page, passcode: string = TEST_PASSCOD
   await expect(page.locator('[data-testid="unlock-button"]')).toBeEnabled({ timeout: 5000 });
   await page.locator('[data-testid="unlock-button"]').click();
 
+  // Clear org context after unlock completes
+  // Clerk may restore org context during page state changes
+  await clearActiveOrg(page);
+
   // Wait for unlock to complete
   await page.waitForSelector('textarea[placeholder*="message"]', { timeout: DEFAULT_TIMEOUT });
 }
@@ -106,6 +114,8 @@ async function unlockEncryptionViaUI(page: Page, passcode: string = TEST_PASSCOD
 test.describe('Encryption Setup', () => {
   test.beforeEach(async ({ page }) => {
     await signInWithClerk(page);
+    // Clear org context to ensure tests start in personal context
+    await clearActiveOrg(page);
   });
 
   test('shows encryption setup or unlock prompt', async ({ page }) => {

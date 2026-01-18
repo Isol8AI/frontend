@@ -21,6 +21,7 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { useAuth } from '@clerk/nextjs';
 import { BACKEND_URL } from '@/lib/api';
 import { useEncryption } from './useEncryption';
+import { useMemories, type TransportMemory } from './useMemories';
 import type {
   SerializedEncryptedPayload,
   EncryptedMessage,
@@ -47,6 +48,10 @@ export interface UseChatOptions {
   orgId?: string | null;
   /** Callback when session ID changes */
   onSessionChange?: (sessionId: string) => void;
+  /** Whether to fetch and include relevant memories in chat context (default: true) */
+  enableMemories?: boolean;
+  /** Maximum number of memories to include in context (default: 5) */
+  memoryLimit?: number;
 }
 
 export interface UseChatReturn {
@@ -117,9 +122,16 @@ function isValidSSEData(data: unknown): data is SSEData {
 // =============================================================================
 
 export function useChat(options: UseChatOptions = {}): UseChatReturn {
-  const { initialSessionId, orgId, onSessionChange } = options;
+  const {
+    initialSessionId,
+    orgId,
+    onSessionChange,
+    enableMemories = true,
+    memoryLimit = 5,
+  } = options;
   const { getToken } = useAuth();
   const encryption = useEncryption();
+  const memories = useMemories({ orgId });
   const isOrgContext = !!orgId;
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -318,6 +330,23 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
           console.log('History messages count:', historyMessages.length);
         }
 
+        // Step 2c: Fetch and prepare relevant memories (optional)
+        let transportMemories: TransportMemory[] = [];
+        if (enableMemories) {
+          try {
+            console.log('\n📤 STEP 2c: Fetch Relevant Memories');
+            console.log('-'.repeat(60));
+            transportMemories = await memories.searchAndPrepareForTransport(content, memoryLimit);
+            console.log('Found and prepared', transportMemories.length, 'memories');
+            for (const mem of transportMemories) {
+              console.log(`  - [${mem.sector}]: ${mem.text.substring(0, 50)}...`);
+            }
+          } catch (memoryError) {
+            // Memory fetching is non-fatal - continue without memories
+            console.warn('Failed to fetch memories (non-fatal):', memoryError);
+          }
+        }
+
         // Step 3: Send request to backend
         console.log('\n📤 STEP 3: Send Encrypted Request to Backend');
         console.log('-'.repeat(60));
@@ -328,6 +357,7 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
         console.log('  client_transport_public_key:', transportKeypair.publicKey.substring(0, 32) + '...');
         console.log('  encrypted_message: [encrypted payload above]');
         console.log('  encrypted_history:', encryptedHistory.length, 'messages');
+        console.log('  encrypted_memories:', transportMemories.length, 'memories (for future context injection)');
 
         const res = await fetch(`${BACKEND_URL}/chat/encrypted/stream`, {
           method: 'POST',
@@ -339,6 +369,9 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
             session_id: sessionId,
             encrypted_message: encryptedMessage,
             encrypted_history: encryptedHistory,
+            // NOTE: encrypted_memories prepared for future backend support
+            // Backend will ignore this field until context injection is implemented
+            encrypted_memories: transportMemories.map((m) => m.encryptedPayload),
             client_transport_public_key: transportKeypair.publicKey,
             model,
             ...(orgId && { org_id: orgId }),
@@ -475,7 +508,7 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
         setIsStreaming(false);
       }
     },
-    [encryption, getToken, messages, sessionId, onSessionChange, isOrgContext, orgId]
+    [encryption, getToken, messages, sessionId, onSessionChange, isOrgContext, orgId, memories, enableMemories, memoryLimit]
   );
 
   // Clear session

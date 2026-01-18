@@ -1,6 +1,7 @@
 "use client";
 
-import { OrganizationSwitcher as ClerkOrgSwitcher } from "@clerk/nextjs";
+import { useEffect } from "react";
+import { OrganizationSwitcher as ClerkOrgSwitcher, useOrganization } from "@clerk/nextjs";
 
 const SWITCHER_APPEARANCE = {
   elements: {
@@ -11,13 +12,30 @@ const SWITCHER_APPEARANCE = {
 } as const;
 
 export function OrganizationSwitcher(): React.ReactElement {
+  const { organization, isLoaded } = useOrganization();
+
+  // DEBUG: Log organization changes from Clerk's perspective
+  useEffect(() => {
+    console.log("[OrganizationSwitcher] Organization state:", {
+      isLoaded,
+      organizationId: organization?.id ?? null,
+      organizationName: organization?.name ?? null,
+    });
+  }, [organization, isLoaded]);
+
+  // DEBUG: Log component mount/unmount
+  useEffect(() => {
+    console.log("[OrganizationSwitcher] MOUNTED");
+    return () => {
+      console.log("[OrganizationSwitcher] UNMOUNTING");
+    };
+  }, []);
+
   return (
     <ClerkOrgSwitcher
       hidePersonal={false}
       afterCreateOrganizationUrl="/"
       afterLeaveOrganizationUrl="/"
-      afterSelectOrganizationUrl="/"
-      afterSelectPersonalUrl="/"
       appearance={SWITCHER_APPEARANCE}
     />
   );

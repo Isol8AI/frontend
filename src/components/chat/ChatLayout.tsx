@@ -40,6 +40,23 @@ export function ChatLayout({ children }: ChatLayoutProps): React.ReactElement {
   const apiRef = useRef(api);
   apiRef.current = api;
 
+  // DEBUG: Log component mount/unmount
+  useEffect(() => {
+    console.log("[ChatLayout] MOUNTED");
+    return () => {
+      console.log("[ChatLayout] UNMOUNTING");
+    };
+  }, []);
+
+  // DEBUG: Log org context changes
+  useEffect(() => {
+    console.log("[ChatLayout] Org context from useOrgContext:", {
+      orgId,
+      isPersonalContext,
+      isOrgAdmin,
+    });
+  }, [orgId, isPersonalContext, isOrgAdmin]);
+
   const loadSessions = useCallback(async (): Promise<void> => {
     setIsLoadingSessions(true);
     try {
@@ -73,11 +90,14 @@ export function ChatLayout({ children }: ChatLayoutProps): React.ReactElement {
 
   // Stable event listener setup using refs
   useEffect(() => {
-    const handleOrgContextChanged = (): void => {
+    const handleOrgContextChanged = (event: Event): void => {
+      const customEvent = event as CustomEvent;
+      console.log("[ChatLayout] Received 'orgContextChanged' event:", customEvent.detail);
       resetToNewChat();
     };
 
     const handleSessionUpdated = (): void => {
+      console.log("[ChatLayout] Received 'sessionUpdated' event");
       loadSessions();
     };
 
