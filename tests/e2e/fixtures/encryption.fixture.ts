@@ -934,10 +934,25 @@ export async function mockKeyCreation(page: Page): Promise<{ getPublicKey: () =>
 }
 
 /**
+ * Interface for extracted fact to include in stream.
+ */
+export interface ExtractedFactMock {
+  subject: string;
+  predicate: string;
+  object: string;
+  confidence: number;
+  type: string;
+}
+
+/**
  * Create a mock encrypted chat stream that uses REAL encryption.
  * The response chunks are properly encrypted to the client's transport public key.
+ * Optionally includes extracted facts in the stream.
  */
-export function createEncryptedStreamHandler(chunks: string[]) {
+export function createEncryptedStreamHandler(
+  chunks: string[],
+  options?: { extractedFacts?: ExtractedFactMock[] }
+) {
   return async (route: Route) => {
     // Parse the request to get the transport public key
     const postData = route.request().postData();
@@ -967,8 +982,36 @@ export function createEncryptedStreamHandler(chunks: string[]) {
         responseBody += `data: {"type":"encrypted_chunk","encrypted_content":${JSON.stringify(encryptedContent)}}\n\n`;
       } else {
         // Fallback: return unencrypted (for tests that don't provide transport key)
+        console.warn('[Mock] WARNING: Using unencrypted fallback - transport key not found');
         responseBody += `data: {"type":"chunk","content":"${chunk}"}\n\n`;
       }
+    }
+
+    // Add extracted facts if provided
+    if (options?.extractedFacts && options.extractedFacts.length > 0 && transportPublicKey) {
+      const factsData = options.extractedFacts.map((fact, index) => {
+        const factPayload = {
+          id: `test-fact-${index}`,
+          subject: fact.subject,
+          predicate: fact.predicate,
+          object: fact.object,
+          confidence: fact.confidence,
+          type: fact.type,
+          source: 'system',
+          entities: fact.object.toLowerCase().split(/\s+/).filter(w => w.length > 2),
+        };
+        const encryptedFact = encryptToPublicKey(
+          transportPublicKey!,
+          JSON.stringify(factPayload),
+          'fact-extraction'
+        );
+        return {
+          fact_id: `test-fact-${index}`,
+          encrypted_payload: encryptedFact,
+        };
+      });
+
+      responseBody += `data: {"type":"extracted_facts","facts":${JSON.stringify(factsData)}}\n\n`;
     }
 
     responseBody += 'data: {"type":"done"}\n\n';

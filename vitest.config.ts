@@ -21,6 +21,15 @@ export default defineConfig({
         minThreads: 1,
       },
     },
+    // Handle heavy dependencies that cause issues with vitest
+    server: {
+      deps: {
+        // Externalize heavy ML packages to prevent bundling hangs
+        external: ['@huggingface/transformers', 'onnxruntime-web', 'onnxruntime-node'],
+      },
+    },
+    // Increase test timeout for slow module initialization
+    testTimeout: 30000,
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html'],

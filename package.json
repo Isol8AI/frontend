@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@clerk/nextjs": "^6.36.5",
+    "@huggingface/transformers": "^3.0.0",
     "@noble/ciphers": "^1.2.1",
     "@noble/curves": "^1.8.1",
     "@noble/hashes": "^1.7.1",
@@ -32,8 +33,7 @@
     "next": "16.1.1",
     "react": "19.2.3",
     "react-dom": "19.2.3",
-    "tailwind-merge": "^3.4.0",
-    "@huggingface/transformers": "^3.0.0"
+    "tailwind-merge": "^3.4.0"
   },
   "devDependencies": {
     "@clerk/testing": "^1.13.28",
@@ -53,6 +53,7 @@
     "dotenv": "^17.2.3",
     "eslint": "^9",
     "eslint-config-next": "16.1.1",
+    "fake-indexeddb": "^6.2.5",
     "jsdom": "^24.0.0",
     "msw": "^2.2.0",
     "tailwindcss": "^4",

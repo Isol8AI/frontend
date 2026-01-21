@@ -40,6 +40,35 @@ let loadingPromise: Promise<FeatureExtractionPipeline> | null = null;
 /** Initialization error if any */
 let initError: Error | null = null;
 
+/** Test mode flag - when true, uses mock embeddings instead of real model */
+let testMode = false;
+
+// Auto-detect test mode from window flag (set by E2E tests via addInitScript)
+if (typeof window !== 'undefined') {
+  const win = window as unknown as { __EMBEDDINGS_TEST_MODE__?: boolean };
+  if (win.__EMBEDDINGS_TEST_MODE__ === true) {
+    testMode = true;
+    console.log('[Embeddings] Test mode auto-detected from window flag');
+  }
+}
+
+/**
+ * Enable test mode for embeddings.
+ * In test mode, embeddings are generated as random normalized vectors
+ * without loading the ML model. This is useful for E2E tests.
+ */
+export function enableTestMode(): void {
+  testMode = true;
+  console.log('[Embeddings] Test mode enabled');
+}
+
+/**
+ * Check if test mode is enabled.
+ */
+export function isTestMode(): boolean {
+  return testMode;
+}
+
 // =============================================================================
 // Initialization
 // =============================================================================
@@ -50,9 +79,17 @@ let initError: Error | null = null;
  * This function is idempotent - calling it multiple times is safe.
  * The model is loaded lazily on first call.
  *
+ * In test mode, this is a no-op as we use mock embeddings.
+ *
  * @throws Error if model loading fails
  */
 export async function initEmbeddings(): Promise<void> {
+  // Test mode - no real initialization needed
+  if (testMode) {
+    console.log('[Embeddings] Test mode - skipping model initialization');
+    return;
+  }
+
   // Already initialized
   if (extractorPipeline) {
     return;
@@ -108,9 +145,10 @@ export async function initEmbeddings(): Promise<void> {
 
 /**
  * Check if embeddings are ready to use.
+ * In test mode, always returns true.
  */
 export function isEmbeddingsReady(): boolean {
-  return extractorPipeline !== null;
+  return testMode || extractorPipeline !== null;
 }
 
 /**
@@ -132,10 +170,39 @@ export function getEmbeddingsError(): Error | null {
 // =============================================================================
 
 /**
+ * Generate a deterministic mock embedding for testing.
+ * Uses a simple hash of the text to create reproducible embeddings.
+ */
+function generateMockEmbedding(text: string): number[] {
+  // Simple hash for deterministic results
+  let hash = 0;
+  for (let i = 0; i < text.length; i++) {
+    const char = text.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32-bit integer
+  }
+
+  // Generate deterministic embedding based on hash
+  const embedding: number[] = [];
+  for (let i = 0; i < EMBEDDING_DIM; i++) {
+    // Use hash + index to generate each dimension
+    const seed = hash + i * 31;
+    const value = Math.sin(seed) * 2 - 1;
+    embedding.push(value);
+  }
+
+  // Normalize
+  const norm = Math.sqrt(embedding.reduce((sum, v) => sum + v * v, 0));
+  return embedding.map(v => v / norm);
+}
+
+/**
  * Generate an embedding vector for the given text.
  *
  * The embedding is normalized for cosine similarity search.
  * This function will lazily initialize the model if needed.
+ *
+ * In test mode, returns a deterministic mock embedding.
  *
  * @param text - Text to generate embedding for
  * @returns 384-dimensional embedding vector
@@ -144,6 +211,12 @@ export function getEmbeddingsError(): Error | null {
 export async function generateEmbedding(text: string): Promise<number[]> {
   if (!text || text.trim().length === 0) {
     throw new Error('Cannot generate embedding for empty text');
+  }
+
+  // Test mode - return mock embedding
+  if (testMode) {
+    console.log('[Embeddings] Test mode - generating mock embedding');
+    return generateMockEmbedding(text);
   }
 
   // Ensure model is loaded

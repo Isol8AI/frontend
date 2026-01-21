@@ -6,3 +6,4 @@ export { useEncryption, type UseEncryptionReturn, type EncryptionState, type Tra
 export { useChat, type UseChatReturn, type UseChatOptions, type ChatMessage } from './useChat';
 export { useOrgSession, type UseOrgSessionReturn, type OrgSessionState, type OrgMembership, type OrgEncryptionStatus } from './useOrgSession';
 export { useOrgAdmin, type UseOrgAdminReturn, type PendingMember, type OrgMember, type DistributionProgress } from './useOrgAdmin';
+export { useTemporalFacts, type UseTemporalFactsReturn } from './useTemporalFacts';

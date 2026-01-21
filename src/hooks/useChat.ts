@@ -22,10 +22,12 @@ import { useAuth } from '@clerk/nextjs';
 import { BACKEND_URL } from '@/lib/api';
 import { useEncryption } from './useEncryption';
 import { useMemories, type TransportMemory } from './useMemories';
+import { useTemporalFacts } from './useTemporalFacts';
 import type {
   SerializedEncryptedPayload,
   EncryptedMessage,
 } from '@/lib/crypto/message-crypto';
+import type { TemporalFact } from '@/lib/temporal-facts';
 
 // =============================================================================
 // Types
@@ -52,6 +54,12 @@ export interface UseChatOptions {
   enableMemories?: boolean;
   /** Maximum number of memories to include in context (default: 5) */
   memoryLimit?: number;
+  /** Whether to fetch and include relevant facts in chat context (default: true) */
+  enableFacts?: boolean;
+  /** Maximum number of facts to include in context (default: 10) */
+  factLimit?: number;
+  /** Minimum confidence for facts to be included (default: 0.5) */
+  factMinConfidence?: number;
 }
 
 export interface UseChatReturn {
@@ -98,10 +106,27 @@ interface SSEErrorData {
   message: string;
 }
 
+interface SSEStoredData {
+  type: 'stored';
+  model_used: string;
+  input_tokens: number;
+  output_tokens: number;
+}
+
+interface SSEExtractedFactsData {
+  type: 'extracted_facts';
+  facts: Array<{
+    fact_id: string;
+    encrypted_payload: SerializedEncryptedPayload;
+  }>;
+}
+
 type SSEData =
   | SSESessionData
   | SSEEncryptedChunkData
   | SSEDoneData
+  | SSEStoredData
+  | SSEExtractedFactsData
   | SSEErrorData;
 
 function isValidSSEData(data: unknown): data is SSEData {
@@ -112,6 +137,8 @@ function isValidSSEData(data: unknown): data is SSEData {
   if (obj.type === 'encrypted_chunk' && typeof obj.encrypted_content === 'object')
     return true;
   if (obj.type === 'done') return true;
+  if (obj.type === 'stored') return true;
+  if (obj.type === 'extracted_facts' && Array.isArray(obj.facts)) return true;
   if (obj.type === 'error' && typeof obj.message === 'string') return true;
 
   return false;
@@ -128,10 +155,14 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
     onSessionChange,
     enableMemories = true,
     memoryLimit = 5,
+    enableFacts = true,
+    factLimit = 10,
+    factMinConfidence = 0.5,
   } = options;
   const { getToken } = useAuth();
   const encryption = useEncryption();
   const memories = useMemories({ orgId });
+  const temporalFacts = useTemporalFacts();
   const isOrgContext = !!orgId;
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -347,6 +378,31 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
           }
         }
 
+        // Step 2d: Fetch and prepare relevant facts (optional)
+        let factsContext = '';
+        if (enableFacts) {
+          try {
+            console.log('\n📤 STEP 2d: Fetch Relevant Facts');
+            console.log('-'.repeat(60));
+            const scoredFacts = await temporalFacts.searchRelevantFacts(content, factLimit);
+            console.log('Found', scoredFacts.length, 'relevant facts');
+
+            // Filter by minimum confidence
+            const filteredFacts = scoredFacts.filter(([fact]) => fact.confidence >= factMinConfidence);
+
+            if (filteredFacts.length > 0) {
+              factsContext = '## Current Session Facts\n';
+              for (const [fact, score] of filteredFacts) {
+                console.log(`  - [${fact.type}] ${fact.subject} ${fact.predicate} ${fact.object} (score: ${score.toFixed(3)})`);
+                factsContext += `- ${fact.subject} ${fact.predicate} ${fact.object}\n`;
+              }
+            }
+          } catch (factsError) {
+            // Facts fetching is non-fatal - continue without facts
+            console.warn('Failed to fetch facts (non-fatal):', factsError);
+          }
+        }
+
         // Step 3: Send request to backend
         console.log('\n📤 STEP 3: Send Encrypted Request to Backend');
         console.log('-'.repeat(60));
@@ -358,6 +414,7 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
         console.log('  encrypted_message: [encrypted payload above]');
         console.log('  encrypted_history:', encryptedHistory.length, 'messages');
         console.log('  encrypted_memories:', transportMemories.length, 'memories (for future context injection)');
+        console.log('  facts_context:', factsContext ? 'included' : 'none');
 
         const res = await fetch(`${BACKEND_URL}/chat/encrypted/stream`, {
           method: 'POST',
@@ -372,6 +429,9 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
             // NOTE: encrypted_memories prepared for future backend support
             // Backend will ignore this field until context injection is implemented
             encrypted_memories: transportMemories.map((m) => m.encryptedPayload),
+            // Plaintext facts context (client-side, already encrypted at rest in IndexedDB)
+            // The backend will inject this into the LLM prompt
+            facts_context: factsContext || undefined,
             client_transport_public_key: transportKeypair.publicKey,
             model,
             ...(orgId && { org_id: orgId }),
@@ -446,6 +506,41 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
                         : msg
                     )
                   );
+                } else if (data.type === 'stored') {
+                  console.log('\n💾 SSE Event [stored]');
+                  console.log('  model_used:', data.model_used);
+                  console.log('  input_tokens:', data.input_tokens);
+                  console.log('  output_tokens:', data.output_tokens);
+                } else if (data.type === 'extracted_facts') {
+                  console.log('\n📝 SSE Event [extracted_facts]');
+                  console.log(`  Received ${data.facts.length} encrypted facts from enclave`);
+
+                  // Decrypt and store each fact
+                  for (const encryptedFact of data.facts) {
+                    try {
+                      // Decrypt the fact payload
+                      const factJson = encryption.decryptTransportResponse(
+                        encryptedFact.encrypted_payload
+                      );
+                      const factData = JSON.parse(factJson);
+                      console.log(`  - Decrypted fact: ${factData.subject} ${factData.predicate} ${factData.object}`);
+
+                      // Store the fact using temporal facts system
+                      await temporalFacts.addFact({
+                        subject: factData.subject,
+                        predicate: factData.predicate,
+                        object: factData.object,
+                        confidence: factData.confidence,
+                        type: factData.type,
+                        source: factData.source,
+                        entities: factData.entities,
+                        sessionId: sessionId ?? undefined,
+                      });
+                    } catch (factErr) {
+                      console.warn('  Failed to process fact:', factErr);
+                    }
+                  }
+                  console.log(`  ✓ Stored ${data.facts.length} facts from enclave`);
                 } else if (data.type === 'done') {
                   console.log('\n✅ SSE Event [done]');
                   storedUserPayload = data.stored_user_message;
@@ -485,6 +580,26 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
             return msg;
           })
         );
+
+        // Step 6: Auto-trigger fact extraction (async, non-blocking)
+        if (enableFacts && fullContent.length > 0) {
+          console.log('\n🧠 STEP 6: Auto-Extract Facts');
+          console.log('-'.repeat(60));
+          // Run extraction in background (don't await)
+          temporalFacts.extractAndStoreFacts(
+            content,           // User message
+            fullContent,       // Assistant response
+            sessionId ?? undefined
+          ).then((facts) => {
+            console.log(`[AutoExtract] Extracted and stored ${facts.length} facts`);
+            for (const fact of facts) {
+              console.log(`  - [${fact.type}] ${fact.subject} ${fact.predicate} ${fact.object}`);
+            }
+          }).catch((err) => {
+            // Extraction errors are non-fatal
+            console.warn('[AutoExtract] Failed to extract facts:', err);
+          });
+        }
       } catch (err) {
         // Don't show error for aborted requests
         if (err instanceof Error && err.name === 'AbortError') {
@@ -508,7 +623,7 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
         setIsStreaming(false);
       }
     },
-    [encryption, getToken, messages, sessionId, onSessionChange, isOrgContext, orgId, memories, enableMemories, memoryLimit]
+    [encryption, getToken, messages, sessionId, onSessionChange, isOrgContext, orgId, memories, enableMemories, memoryLimit, temporalFacts, enableFacts, factLimit, factMinConfidence]
   );
 
   // Clear session
