@@ -16,15 +16,18 @@ const nextConfig: NextConfig = {
     'onnxruntime-node',
   ],
 
-  // Handle argon2-browser WASM module
+  // Handle argon2-browser WASM module and exclude heavy ML packages
   webpack: (config, { isServer }) => {
-    // Exclude transformers.js from server bundles entirely
-    if (isServer) {
-      config.externals = config.externals || [];
-      config.externals.push({
-        '@huggingface/transformers': 'commonjs @huggingface/transformers',
-      });
-    }
+    // CRITICAL: Exclude onnxruntime-node and sharp from ALL builds
+    // This is the official Hugging Face recommendation for client-side inference
+    // See: https://huggingface.co/docs/transformers.js/en/tutorials/next
+    // Setting to false tells webpack to completely ignore these modules
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      "sharp$": false,
+      "onnxruntime-node$": false,
+    };
+
     // Enable WebAssembly support
     config.experiments = {
       ...config.experiments,
@@ -38,7 +41,7 @@ const nextConfig: NextConfig = {
       type: "asset/resource",
     });
 
-    // For browser builds, ignore Node.js modules
+    // For browser builds, additional Node.js module handling
     if (!isServer) {
       config.resolve.fallback = {
         ...config.resolve.fallback,
@@ -48,6 +51,7 @@ const nextConfig: NextConfig = {
       };
 
       // Alias to prevent argon2-browser's problematic WASM loader
+      // Note: spread existing aliases to preserve sharp$/onnxruntime-node$ exclusions
       config.resolve.alias = {
         ...config.resolve.alias,
         "argon2-browser": path.resolve(
