@@ -8,8 +8,23 @@ const nextConfig: NextConfig = {
   // Empty turbopack config to silence warning (we use --webpack flag in build script)
   turbopack: {},
 
+  // Externalize large packages from serverless functions
+  // These are client-only and should not be bundled server-side
+  serverExternalPackages: [
+    '@huggingface/transformers',
+    'onnxruntime-web',
+    'onnxruntime-node',
+  ],
+
   // Handle argon2-browser WASM module
   webpack: (config, { isServer }) => {
+    // Exclude transformers.js from server bundles entirely
+    if (isServer) {
+      config.externals = config.externals || [];
+      config.externals.push({
+        '@huggingface/transformers': 'commonjs @huggingface/transformers',
+      });
+    }
     // Enable WebAssembly support
     config.experiments = {
       ...config.experiments,
