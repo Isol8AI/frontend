@@ -42,6 +42,8 @@ export const EncryptionContext = {
   ASSISTANT_MESSAGE_STORAGE: 'assistant-message-storage',
   /** Organization key distributed to member */
   ORG_KEY_DISTRIBUTION: 'org-key-distribution',
+  /** Memory content stored in database */
+  MEMORY_STORAGE: 'memory-storage',
 } as const;
 
 export type EncryptionContextType =
@@ -286,4 +288,55 @@ export function encryptOrgKeyForMember(
     EncryptionContext.ORG_KEY_DISTRIBUTION
   );
   return serializePayload(payload);
+}
+
+// =============================================================================
+// Memory Encryption (Stored Memories)
+// =============================================================================
+
+/**
+ * Decrypt a stored memory from the database.
+ *
+ * Memories are stored encrypted to the user's (or org's) public key
+ * using the MEMORY_STORAGE context.
+ *
+ * @param privateKey - User's or org's private key (hex)
+ * @param serialized - Serialized encrypted payload from database
+ * @returns Decrypted memory content
+ */
+export function decryptStoredMemory(
+  privateKey: string,
+  serialized: SerializedEncryptedPayload
+): string {
+  const payload = deserializePayload(serialized);
+  const plaintext = decryptWithPrivateKey(
+    hexToBytes(privateKey),
+    payload,
+    EncryptionContext.MEMORY_STORAGE
+  );
+  return new TextDecoder().decode(plaintext);
+}
+
+/**
+ * Re-encrypt a memory for transport to enclave.
+ *
+ * When sending relevant memories to the enclave for context injection,
+ * we need to:
+ * 1. Decrypt the memory using our storage key
+ * 2. Re-encrypt to the enclave's transport key
+ *
+ * @param privateKey - User's or org's private key (hex)
+ * @param enclavePublicKey - Enclave's transport public key (hex)
+ * @param encryptedMemory - Encrypted memory from storage
+ * @returns Re-encrypted payload for transport to enclave
+ */
+export function reEncryptMemoryForTransport(
+  privateKey: string,
+  enclavePublicKey: string,
+  encryptedMemory: SerializedEncryptedPayload
+): SerializedEncryptedPayload {
+  // Decrypt from storage
+  const plaintext = decryptStoredMemory(privateKey, encryptedMemory);
+  // Re-encrypt for transport
+  return encryptMessageToEnclave(enclavePublicKey, plaintext);
 }

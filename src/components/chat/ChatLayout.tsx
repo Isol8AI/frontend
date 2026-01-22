@@ -40,11 +40,29 @@ export function ChatLayout({ children }: ChatLayoutProps): React.ReactElement {
   const apiRef = useRef(api);
   apiRef.current = api;
 
+  // DEBUG: Log component mount/unmount
+  useEffect(() => {
+    console.log("[ChatLayout] MOUNTED");
+    return () => {
+      console.log("[ChatLayout] UNMOUNTING");
+    };
+  }, []);
+
+  // DEBUG: Log org context changes
+  useEffect(() => {
+    console.log("[ChatLayout] Org context from useOrgContext:", {
+      orgId,
+      isPersonalContext,
+      isOrgAdmin,
+    });
+  }, [orgId, isPersonalContext, isOrgAdmin]);
+
   const loadSessions = useCallback(async (): Promise<void> => {
     setIsLoadingSessions(true);
     try {
       const data = await apiRef.current.get("/chat/sessions");
-      setSessions(data as Session[]);
+      // Backend returns paginated response: { sessions: [...], total, limit, offset }
+      setSessions((data as { sessions: Session[] }).sessions);
     } catch (err) {
       console.error("Failed to load sessions:", err);
     } finally {
@@ -66,21 +84,20 @@ export function ChatLayout({ children }: ChatLayoutProps): React.ReactElement {
       .catch((err) => console.error("User sync failed:", err));
   }, [isSignedIn, loadSessions]);
 
-  useEffect(() => {
-    if (isSignedIn) {
-      resetToNewChat();
-    }
-  }, [orgId, isSignedIn, resetToNewChat]);
+  // Note: We don't need a separate useEffect for orgId changes because
+  // OrganizationProvider dispatches 'orgContextChanged' event which is
+  // handled below. Having both would cause duplicate resets.
 
   // Stable event listener setup using refs
   useEffect(() => {
-    const handleOrgContextChanged = (): void => {
-      setCurrentSessionId(null);
-      dispatchNewChatEvent();
-      loadSessions();
+    const handleOrgContextChanged = (event: Event): void => {
+      const customEvent = event as CustomEvent;
+      console.log("[ChatLayout] Received 'orgContextChanged' event:", customEvent.detail);
+      resetToNewChat();
     };
 
     const handleSessionUpdated = (): void => {
+      console.log("[ChatLayout] Received 'sessionUpdated' event");
       loadSessions();
     };
 
@@ -91,7 +108,7 @@ export function ChatLayout({ children }: ChatLayoutProps): React.ReactElement {
       window.removeEventListener("orgContextChanged", handleOrgContextChanged);
       window.removeEventListener("sessionUpdated", handleSessionUpdated);
     };
-  }, [loadSessions]);
+  }, [loadSessions, resetToNewChat]);
 
   function handleNewChat(): void {
     setCurrentSessionId(null);

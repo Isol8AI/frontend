@@ -10,8 +10,6 @@ import { randomBytes } from '@noble/ciphers/webcrypto';
  */
 export const TEST_PASSCODE = '123456';
 
-const BACKEND_URL = 'http://localhost:8000/api/v1';
-
 // =============================================================================
 // Real Backend Helpers
 // =============================================================================
@@ -60,6 +58,67 @@ export async function setActiveOrg(page: Page, orgId: string): Promise<boolean> 
     return true;
   } catch (error) {
     console.error('Error setting active org:', error);
+    return false;
+  }
+}
+
+/**
+ * Clear the active organization in Clerk to return to personal context.
+ * Call this before tests that expect personal context.
+ */
+export async function clearActiveOrg(page: Page): Promise<boolean> {
+  try {
+    const result = await page.evaluate(async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const clerk = (window as any).Clerk;
+      if (!clerk) {
+        console.log('Clerk not available');
+        return { success: false, error: 'Clerk not available' };
+      }
+
+      // Wait for Clerk to be loaded before calling setActive
+      if (!clerk.loaded) {
+        // Wait for Clerk to load (max 5 seconds)
+        await new Promise<void>((resolve, reject) => {
+          const timeout = setTimeout(() => {
+            reject(new Error('Clerk did not load within 5 seconds'));
+          }, 5000);
+
+          clerk.addListener((event: { user?: unknown }) => {
+            if (event.user !== undefined) {
+              clearTimeout(timeout);
+              resolve();
+            }
+          });
+
+          // If already loaded, resolve immediately
+          if (clerk.loaded) {
+            clearTimeout(timeout);
+            resolve();
+          }
+        });
+      }
+
+      try {
+        await clerk.setActive({ organization: null });
+        console.log('Cleared active organization - now in personal context');
+        return { success: true };
+      } catch (e) {
+        console.error('Failed to clear active org:', e);
+        return { success: false, error: String(e) };
+      }
+    });
+
+    if (!result.success) {
+      console.error('Failed to clear active org:', result.error);
+      return false;
+    }
+
+    // Wait for Clerk to update
+    await page.waitForTimeout(500);
+    return true;
+  } catch (error) {
+    console.error('Error clearing active org:', error);
     return false;
   }
 }
@@ -115,6 +174,115 @@ export async function getUserOrgFromMemberships(page: Page): Promise<UserOrg | n
   } catch (error) {
     console.error('Error getting org from memberships:', error);
     return null;
+  }
+}
+
+/**
+ * Create a new organization via Clerk and sync to backend.
+ * Returns the created org details.
+ */
+export async function createOrganization(page: Page, name?: string): Promise<{
+  orgId: string;
+  orgName: string;
+  orgSlug: string;
+}> {
+  const orgName = name || `Test Org ${Date.now()}`;
+
+  const result = await page.evaluate(async (orgNameParam) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const clerk = (window as any).Clerk;
+    if (!clerk) {
+      throw new Error('Clerk not available');
+    }
+
+    // Wait for Clerk to be loaded
+    if (!clerk.loaded) {
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          reject(new Error('Clerk did not load within 5 seconds'));
+        }, 5000);
+
+        const check = () => {
+          if (clerk.loaded) {
+            clearTimeout(timeout);
+            resolve();
+          } else {
+            setTimeout(check, 100);
+          }
+        };
+        check();
+      });
+    }
+
+    // Create organization
+    const org = await clerk.createOrganization({ name: orgNameParam });
+
+    // Sync to backend
+    const token = await clerk.session.getToken();
+    const slug = orgNameParam.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+
+    const syncResponse = await fetch('http://localhost:8000/api/v1/organizations/sync', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        org_id: org.id,
+        name: org.name,
+        slug: slug,
+      }),
+    });
+
+    if (!syncResponse.ok) {
+      console.warn(`Org sync returned ${syncResponse.status}, but org was created in Clerk`);
+    }
+
+    return {
+      orgId: org.id,
+      orgName: org.name,
+      orgSlug: slug,
+    };
+  }, orgName);
+
+  console.log(`Created organization: ${result.orgName} (${result.orgId})`);
+  return result;
+}
+
+/**
+ * Delete an organization via Clerk.
+ * Must be called with the org set as active.
+ */
+export async function deleteOrganization(page: Page, orgId: string): Promise<boolean> {
+  try {
+    // First set the org as active
+    await setActiveOrg(page, orgId);
+
+    const result = await page.evaluate(async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const clerk = (window as any).Clerk;
+      if (!clerk?.organization) {
+        return { success: false, error: 'No active organization' };
+      }
+
+      try {
+        await clerk.organization.destroy();
+        return { success: true };
+      } catch (e) {
+        return { success: false, error: String(e) };
+      }
+    });
+
+    if (!result.success) {
+      console.error('Failed to delete org:', result.error);
+      return false;
+    }
+
+    console.log(`Deleted organization: ${orgId}`);
+    return true;
+  } catch (error) {
+    console.error('Error deleting org:', error);
+    return false;
   }
 }
 
@@ -188,6 +356,10 @@ export async function getUserOrg(page: Page): Promise<UserOrg | null> {
  * Handles both new users (setup) and returning users (unlock).
  */
 export async function ensureEncryptionReady(page: Page): Promise<void> {
+  // Clear org context first - ensures tests start in personal context
+  // This is needed because Clerk persists org context across sessions
+  await clearActiveOrg(page);
+
   const setupPrompt = page.locator('[data-testid="setup-encryption-prompt"]');
   const unlockPrompt = page.locator('[data-testid="unlock-encryption-prompt"]');
   const chatTextarea = page.locator('textarea[placeholder*="message"]');
@@ -213,42 +385,6 @@ export async function ensureEncryptionReady(page: Page): Promise<void> {
   await expect(chatTextarea).toBeVisible({ timeout: 15000 });
 }
 
-/**
- * Helper to fill React controlled inputs/textareas that don't respond to regular fill/type.
- * This sets the value directly and dispatches proper events that React can detect.
- */
-async function fillReactInput(page: Page, selector: string, value: string): Promise<void> {
-  await page.evaluate(({ selector, value }) => {
-    const element = document.querySelector(selector) as HTMLInputElement | HTMLTextAreaElement;
-    if (element) {
-      // Focus the element first
-      element.focus();
-
-      // Get the appropriate prototype based on element type
-      const prototype = element.tagName === 'TEXTAREA'
-        ? window.HTMLTextAreaElement.prototype
-        : window.HTMLInputElement.prototype;
-
-      const nativeValueSetter = Object.getOwnPropertyDescriptor(prototype, 'value')?.set;
-      if (nativeValueSetter) {
-        nativeValueSetter.call(element, value);
-      }
-
-      // React 16+ uses a special property to track input events
-      // We need to trigger the input event properly
-      const inputEvent = new InputEvent('input', {
-        bubbles: true,
-        cancelable: true,
-        inputType: 'insertText',
-        data: value,
-      });
-      element.dispatchEvent(inputEvent);
-
-      // Also dispatch change event for completeness
-      element.dispatchEvent(new Event('change', { bubbles: true }));
-    }
-  }, { selector, value });
-}
 
 /**
  * Robustly type into a React controlled input using multiple fallback methods.
@@ -440,6 +576,10 @@ export async function resetEncryptionKeys(page: Page): Promise<void> {
  * prompt instead - in that case, we just unlock rather than failing.
  */
 export async function setupEncryption(page: Page): Promise<string> {
+  // Clear org context to ensure personal encryption setup flow
+  // This is needed because Clerk persists org context across sessions
+  await clearActiveOrg(page);
+
   // Reset any existing keys to ensure clean setup
   await resetEncryptionKeys(page);
 
@@ -492,7 +632,7 @@ export async function setupEncryption(page: Page): Promise<string> {
   try {
     await expect(setupButton).toBeEnabled({ timeout: 5000 });
     console.log('Setup button is enabled');
-  } catch (e) {
+  } catch {
     console.error('Setup button did not become enabled');
     const isDisabled = await setupButton.isDisabled();
     console.log(`Button disabled state: ${isDisabled}`);
@@ -511,6 +651,10 @@ export async function setupEncryption(page: Page): Promise<string> {
   // Confirm we saved the recovery code
   await page.click('[data-testid="recovery-code-saved-checkbox"]');
   await page.click('[data-testid="continue-button"]');
+
+  // Clear org context again after setup completes
+  // Clerk may restore org context during page state changes
+  await clearActiveOrg(page);
 
   // Wait for chat input to be visible (encryption is ready)
   await page.waitForSelector('textarea[placeholder*="message"]', { timeout: 10000 });
@@ -603,7 +747,7 @@ export async function unlockEncryption(page: Page, passcode: string = TEST_PASSC
   try {
     await expect(unlockButton).toBeEnabled({ timeout: 5000 });
     console.log('Unlock button is now enabled');
-  } catch (e) {
+  } catch {
     console.log('Unlock button did not become enabled');
     // Re-check input value
     const finalValue = await passcodeInput.inputValue();
@@ -617,6 +761,10 @@ export async function unlockEncryption(page: Page, passcode: string = TEST_PASSC
   console.log('Clicking unlock button...');
   await unlockButton.click();
   console.log('Clicked unlock button');
+
+  // Clear org context after unlock completes
+  // Clerk may restore org context during page state changes
+  await clearActiveOrg(page);
 
   // Wait for unlock to complete (chat input should appear)
   console.log('Waiting for chat input to appear...');
@@ -786,10 +934,25 @@ export async function mockKeyCreation(page: Page): Promise<{ getPublicKey: () =>
 }
 
 /**
+ * Interface for extracted fact to include in stream.
+ */
+export interface ExtractedFactMock {
+  subject: string;
+  predicate: string;
+  object: string;
+  confidence: number;
+  type: string;
+}
+
+/**
  * Create a mock encrypted chat stream that uses REAL encryption.
  * The response chunks are properly encrypted to the client's transport public key.
+ * Optionally includes extracted facts in the stream.
  */
-export function createEncryptedStreamHandler(chunks: string[]) {
+export function createEncryptedStreamHandler(
+  chunks: string[],
+  options?: { extractedFacts?: ExtractedFactMock[] }
+) {
   return async (route: Route) => {
     // Parse the request to get the transport public key
     const postData = route.request().postData();
@@ -819,8 +982,36 @@ export function createEncryptedStreamHandler(chunks: string[]) {
         responseBody += `data: {"type":"encrypted_chunk","encrypted_content":${JSON.stringify(encryptedContent)}}\n\n`;
       } else {
         // Fallback: return unencrypted (for tests that don't provide transport key)
+        console.warn('[Mock] WARNING: Using unencrypted fallback - transport key not found');
         responseBody += `data: {"type":"chunk","content":"${chunk}"}\n\n`;
       }
+    }
+
+    // Add extracted facts if provided
+    if (options?.extractedFacts && options.extractedFacts.length > 0 && transportPublicKey) {
+      const factsData = options.extractedFacts.map((fact, index) => {
+        const factPayload = {
+          id: `test-fact-${index}`,
+          subject: fact.subject,
+          predicate: fact.predicate,
+          object: fact.object,
+          confidence: fact.confidence,
+          type: fact.type,
+          source: 'system',
+          entities: fact.object.toLowerCase().split(/\s+/).filter(w => w.length > 2),
+        };
+        const encryptedFact = encryptToPublicKey(
+          transportPublicKey!,
+          JSON.stringify(factPayload),
+          'fact-extraction'
+        );
+        return {
+          fact_id: `test-fact-${index}`,
+          encrypted_payload: encryptedFact,
+        };
+      });
+
+      responseBody += `data: {"type":"extracted_facts","facts":${JSON.stringify(factsData)}}\n\n`;
     }
 
     responseBody += 'data: {"type":"done"}\n\n';

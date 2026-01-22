@@ -4,6 +4,8 @@ import {
   ensureEncryptionReady,
   unlockEncryption,
   getUserOrgFromMemberships,
+  setActiveOrg,
+  clearActiveOrg,
   TEST_ENCLAVE_PUBLIC_KEY,
   TEST_PASSCODE,
   UserOrg,
@@ -61,6 +63,8 @@ test.describe.serial('Organization Encryption Flow', () => {
     });
 
     await signInWithClerk(page);
+    // Clear org context to ensure tests start in personal context
+    await clearActiveOrg(page);
   });
 
   test('Step 1: User sets up personal encryption', async ({ page }) => {
@@ -210,6 +214,8 @@ test.describe.serial('Organization Encryption Admin Flow', () => {
     });
 
     await signInWithClerk(page);
+    // Clear org context to ensure tests start in personal context
+    await clearActiveOrg(page);
   });
 
   test('Admin: sees appropriate encryption setup UI', async ({ page }) => {
@@ -257,6 +263,68 @@ test.describe.serial('Organization Encryption Admin Flow', () => {
       // Org already has encryption - verify it shows as enabled
       console.log('Org encryption already set up');
     }
+  });
+
+  test('Admin: can set up org encryption', async ({ page }) => {
+    await page.goto('/');
+
+    // Set up or unlock personal encryption first
+    await ensureEncryptionReady(page);
+
+    // Get user's org from memberships
+    const org = await getUserOrgFromMemberships(page);
+    if (!org) {
+      test.skip(true, 'User is not in any organization');
+      return;
+    }
+
+    if (!org.isAdmin) {
+      test.skip(true, 'User is not an org admin');
+      return;
+    }
+
+    // Navigate to org encryption page
+    await page.goto(`/org/${org.orgId}/settings/encryption`);
+    await page.waitForLoadState('networkidle');
+
+    // Check if org already has encryption (skip setup if so)
+    const enabledBadge = page.locator('[data-testid="org-encryption-enabled-badge"]');
+    if (await enabledBadge.isVisible({ timeout: 2000 }).catch(() => false)) {
+      console.log('Org encryption already set up, skipping setup test');
+      return;
+    }
+
+    // Wait for setup form to be visible
+    const setupPrompt = page.locator('[data-testid="setup-org-encryption-prompt"]');
+    await expect(setupPrompt).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+
+    // Fill passcode inputs
+    const passcodeInput = page.locator('[data-testid="org-passcode-input"]');
+    const confirmInput = page.locator('[data-testid="org-passcode-confirm-input"]');
+
+    await passcodeInput.waitFor({ state: 'visible' });
+    await confirmInput.waitFor({ state: 'visible' });
+
+    // Use keyboard.type for reliable React input filling
+    await passcodeInput.click();
+    await page.keyboard.type(TEST_PASSCODE, { delay: 50 });
+
+    await confirmInput.click();
+    await page.keyboard.type(TEST_PASSCODE, { delay: 50 });
+
+    // Verify inputs have values
+    const passcodeValue = await passcodeInput.inputValue();
+    const confirmValue = await confirmInput.inputValue();
+    console.log(`Passcode input: "${passcodeValue}", Confirm input: "${confirmValue}"`);
+
+    // Click create keys button
+    const createButton = page.locator('[data-testid="create-org-keys-button"]');
+    await expect(createButton).toBeEnabled({ timeout: 5000 });
+    await createButton.click();
+
+    // Verify success - enabled badge should appear
+    await expect(enabledBadge).toBeVisible({ timeout: 15000 });
+    console.log('Org encryption setup successful!');
   });
 
   test('Admin: can view pending key distributions', async ({ page }) => {
@@ -351,6 +419,8 @@ test.describe('Organization Encryption Non-Admin', () => {
     });
 
     await signInWithClerk(page);
+    // Clear org context to ensure tests start in personal context
+    await clearActiveOrg(page);
   });
 
   test('Non-admin: sees restricted access message', async ({ page }) => {
@@ -396,5 +466,257 @@ test.describe('Organization Encryption Non-Admin', () => {
     await expect(
       page.locator('[data-testid="create-org-keys-button"]')
     ).not.toBeVisible();
+  });
+});
+
+/**
+ * Tests for Organization Encryption Prompts in ChatWindow
+ *
+ * These tests verify that the correct encryption prompts appear in the ChatWindow
+ * when a user is in organization context with various encryption states.
+ */
+test.describe.serial('ChatWindow Organization Encryption Prompts', () => {
+  test.beforeEach(async ({ page }) => {
+    // ONLY mock the enclave (no real enclave in tests)
+    await page.route('**/api/v1/chat/enclave/info', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          enclave_public_key: TEST_ENCLAVE_PUBLIC_KEY,
+          attestation_available: false,
+          is_mock: true,
+        }),
+      });
+    });
+
+    await signInWithClerk(page);
+    // Clear org context to ensure tests start in personal context
+    await clearActiveOrg(page);
+  });
+
+  test('User in personal context sees chat after encryption setup', async ({ page }) => {
+    await page.goto('/');
+
+    // Set up or unlock personal encryption
+    await ensureEncryptionReady(page);
+
+    // Should see chat textarea (personal context, no org checks)
+    await expect(page.locator('textarea[placeholder*="message"]')).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+  });
+
+  test('Admin in org context without org encryption sees OrgEncryptionSetupPrompt', async ({ page }) => {
+    await page.goto('/');
+
+    // First set up personal encryption in personal context
+    await clearActiveOrg(page);
+    await ensureEncryptionReady(page);
+
+    // Get user's org
+    const org = await getUserOrgFromMemberships(page);
+    if (!org) {
+      test.skip(true, 'User is not in any organization');
+      return;
+    }
+
+    if (!org.isAdmin) {
+      test.skip(true, 'User is not an org admin - cannot test admin setup prompt');
+      return;
+    }
+
+    // Switch to org context
+    await setActiveOrg(page, org.orgId);
+
+    // Reload page to trigger org encryption check
+    await page.reload();
+    await page.waitForLoadState('networkidle');
+
+    // May need to unlock personal encryption again after reload
+    const unlockPrompt = page.locator('[data-testid="unlock-encryption-prompt"]');
+    if (await unlockPrompt.isVisible({ timeout: 3000 }).catch(() => false)) {
+      await unlockEncryption(page, TEST_PASSCODE);
+    }
+
+    // Admin should see either:
+    // - OrgEncryptionSetupPrompt (if org has no encryption)
+    // - Chat textarea (if org already has encryption and user has key)
+    const orgSetupPrompt = page.locator('[data-testid="org-encryption-setup-prompt"]');
+    const chatTextarea = page.locator('textarea[placeholder*="message"]');
+    const orgLoadingMessage = page.locator('text=/Checking organization encryption/i');
+    const orgUnlockingMessage = page.locator('text=/Unlocking organization encryption/i');
+
+    // Wait for one of these to be visible
+    await expect(
+      orgSetupPrompt.or(chatTextarea).or(orgLoadingMessage).or(orgUnlockingMessage).first()
+    ).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+
+    // Log what we see
+    if (await orgSetupPrompt.isVisible()) {
+      console.log('Admin sees OrgEncryptionSetupPrompt - org has no encryption');
+      // Verify the prompt has the expected elements
+      await expect(page.locator('text=/Set Up Organization Encryption/i')).toBeVisible();
+      await expect(page.getByTestId('org-passcode-input')).toBeVisible();
+    } else if (await chatTextarea.isVisible()) {
+      console.log('Admin sees chat - org already has encryption set up');
+    }
+  });
+
+  test('Admin can set up org encryption from ChatWindow', async ({ page }) => {
+    await page.goto('/');
+
+    // First set up personal encryption in personal context
+    await clearActiveOrg(page);
+    await ensureEncryptionReady(page);
+
+    // Get user's org
+    const org = await getUserOrgFromMemberships(page);
+    if (!org) {
+      test.skip(true, 'User is not in any organization');
+      return;
+    }
+
+    if (!org.isAdmin) {
+      test.skip(true, 'User is not an org admin');
+      return;
+    }
+
+    // Switch to org context
+    await setActiveOrg(page, org.orgId);
+
+    // Reload page
+    await page.reload();
+    await page.waitForLoadState('networkidle');
+
+    // May need to unlock personal encryption again after reload
+    const unlockPrompt = page.locator('[data-testid="unlock-encryption-prompt"]');
+    if (await unlockPrompt.isVisible({ timeout: 3000 }).catch(() => false)) {
+      await unlockEncryption(page, TEST_PASSCODE);
+    }
+
+    // Check if org already has encryption (skip setup if so)
+    const chatTextarea = page.locator('textarea[placeholder*="message"]');
+    if (await chatTextarea.isVisible({ timeout: 5000 }).catch(() => false)) {
+      console.log('Org encryption already set up, skipping setup test');
+      return;
+    }
+
+    // Wait for setup prompt to be visible
+    const orgSetupPrompt = page.locator('[data-testid="org-encryption-setup-prompt"]');
+    await expect(orgSetupPrompt).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+
+    // Fill passcode input
+    const passcodeInput = page.locator('[data-testid="org-passcode-input"]');
+    await passcodeInput.waitFor({ state: 'visible' });
+    await passcodeInput.click();
+    await page.keyboard.type(TEST_PASSCODE, { delay: 50 });
+
+    // Click setup button
+    const setupButton = page.locator('[data-testid="setup-org-encryption-button"]');
+    await expect(setupButton).toBeEnabled({ timeout: 5000 });
+    await setupButton.click();
+
+    // After setup, should see chat textarea
+    await expect(chatTextarea).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+    console.log('Org encryption setup from ChatWindow successful!');
+  });
+
+  test('Member in org context without encryption sees AwaitingOrgEncryption', async ({ page }) => {
+    await page.goto('/');
+
+    // First set up personal encryption in personal context
+    await clearActiveOrg(page);
+    await ensureEncryptionReady(page);
+
+    // Get user's org
+    const org = await getUserOrgFromMemberships(page);
+    if (!org) {
+      test.skip(true, 'User is not in any organization');
+      return;
+    }
+
+    if (org.isAdmin) {
+      test.skip(true, 'User is admin - cannot test member view');
+      return;
+    }
+
+    // Switch to org context
+    await setActiveOrg(page, org.orgId);
+
+    // Reload page
+    await page.reload();
+    await page.waitForLoadState('networkidle');
+
+    // May need to unlock personal encryption again after reload
+    const unlockPrompt = page.locator('[data-testid="unlock-encryption-prompt"]');
+    if (await unlockPrompt.isVisible({ timeout: 3000 }).catch(() => false)) {
+      await unlockEncryption(page, TEST_PASSCODE);
+    }
+
+    // Member should see either:
+    // - AwaitingOrgEncryption (org has no encryption)
+    // - AwaitingOrgKeyDistribution (org has encryption but user doesn't have key)
+    // - Chat textarea (user has org key)
+    const awaitingOrgEncryption = page.locator('[data-testid="awaiting-org-encryption"]');
+    const awaitingKeyDistribution = page.locator('[data-testid="awaiting-org-key-distribution"]');
+    const chatTextarea = page.locator('textarea[placeholder*="message"]');
+    const orgLoadingMessage = page.locator('text=/Checking organization encryption/i');
+
+    await expect(
+      awaitingOrgEncryption.or(awaitingKeyDistribution).or(chatTextarea).or(orgLoadingMessage).first()
+    ).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+
+    if (await awaitingOrgEncryption.isVisible()) {
+      console.log('Member sees AwaitingOrgEncryption - org has no encryption');
+      await expect(page.locator('text=/Organization Encryption Not Set Up/i')).toBeVisible();
+    } else if (await awaitingKeyDistribution.isVisible()) {
+      console.log('Member sees AwaitingOrgKeyDistribution - awaiting key distribution');
+      await expect(page.locator('text=/Awaiting Access/i')).toBeVisible();
+    } else if (await chatTextarea.isVisible()) {
+      console.log('Member sees chat - already has org key');
+    }
+  });
+
+  test('User can switch back to personal context and see chat', async ({ page }) => {
+    await page.goto('/');
+
+    // First set up personal encryption in personal context
+    await clearActiveOrg(page);
+    await ensureEncryptionReady(page);
+
+    // Verify chat is visible in personal context
+    await expect(page.locator('textarea[placeholder*="message"]')).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+
+    // Get user's org
+    const org = await getUserOrgFromMemberships(page);
+    if (!org) {
+      // User has no org - test that personal context still works
+      console.log('User has no org, testing personal context only');
+      return;
+    }
+
+    // Switch to org context
+    await setActiveOrg(page, org.orgId);
+    await page.reload();
+    await page.waitForLoadState('networkidle');
+
+    // May need to unlock after reload
+    const unlockPrompt = page.locator('[data-testid="unlock-encryption-prompt"]');
+    if (await unlockPrompt.isVisible({ timeout: 3000 }).catch(() => false)) {
+      await unlockEncryption(page, TEST_PASSCODE);
+    }
+
+    // Now switch back to personal context
+    await clearActiveOrg(page);
+    await page.reload();
+    await page.waitForLoadState('networkidle');
+
+    // May need to unlock again
+    if (await unlockPrompt.isVisible({ timeout: 3000 }).catch(() => false)) {
+      await unlockEncryption(page, TEST_PASSCODE);
+    }
+
+    // Should see chat textarea again (back in personal context)
+    await expect(page.locator('textarea[placeholder*="message"]')).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+    console.log('Successfully switched back to personal context');
   });
 });

@@ -11,6 +11,7 @@ import React, { useEffect, useState } from 'react';
 import { useOrgAdmin } from '@/hooks/useOrgAdmin';
 import { useEncryption } from '@/hooks/useEncryption';
 import { PendingMembersList } from './PendingMembersList';
+import { MembersNeedingSetupList } from './MembersNeedingSetupList';
 import { Button } from '@/components/ui/button';
 import { AlertCircle, CheckCircle2, Key, Loader2, RefreshCw } from 'lucide-react';
 
@@ -29,6 +30,7 @@ export function OrgKeyDistribution({ orgId }: Props) {
       admin.loadPendingMembers(orgId);
       admin.loadAdminOrgKey(orgId);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- admin functions are stable
   }, [orgId, encryption.state.isUnlocked, encryption.isOrgUnlocked]);
 
   // Handle distribute to single member
@@ -132,23 +134,48 @@ export function OrgKeyDistribution({ orgId }: Props) {
         <div className="flex items-center justify-center p-8">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         </div>
-      ) : admin.pendingMembers.length === 0 ? (
-        <div className="p-6 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300 rounded-lg flex items-center gap-3">
-          <CheckCircle2 className="h-6 w-6" />
-          <div>
-            <p className="font-medium">All members have their keys</p>
-            <p className="text-sm opacity-80">
-              No pending key distributions at this time.
-            </p>
-          </div>
-        </div>
       ) : (
-        <PendingMembersList
-          members={admin.pendingMembers}
-          onDistribute={handleDistribute}
-          distributingMemberId={isDistributing}
-          isLoading={admin.isLoading}
-        />
+        <>
+          {/* Ready for distribution */}
+          {admin.pendingMembers.length > 0 ? (
+            <div className="space-y-3">
+              <h3 className="text-lg font-medium">
+                Ready for Distribution ({admin.pendingMembers.length})
+              </h3>
+              <PendingMembersList
+                members={admin.pendingMembers}
+                onDistribute={handleDistribute}
+                distributingMemberId={isDistributing}
+                isLoading={admin.isLoading}
+              />
+            </div>
+          ) : admin.membersNeedingSetup.length === 0 ? (
+            <div className="p-6 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300 rounded-lg flex items-center gap-3">
+              <CheckCircle2 className="h-6 w-6" />
+              <div>
+                <p className="font-medium">All members have their keys</p>
+                <p className="text-sm opacity-80">
+                  No pending key distributions at this time.
+                </p>
+              </div>
+            </div>
+          ) : null}
+
+          {/* Members needing personal setup */}
+          {admin.membersNeedingSetup.length > 0 && (
+            <div className="space-y-3 mt-6">
+              <div>
+                <h3 className="text-lg font-medium text-amber-700 dark:text-amber-300">
+                  Awaiting Personal Setup ({admin.membersNeedingSetup.length})
+                </h3>
+                <p className="text-sm text-muted-foreground">
+                  These members need to set up their personal encryption before receiving org keys.
+                </p>
+              </div>
+              <MembersNeedingSetupList members={admin.membersNeedingSetup} />
+            </div>
+          )}
+        </>
       )}
     </div>
   );

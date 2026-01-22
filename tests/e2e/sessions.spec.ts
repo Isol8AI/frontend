@@ -47,7 +47,12 @@ test.describe('Sessions', () => {
         await route.fulfill({
           status: 200,
           contentType: 'application/json',
-          body: JSON.stringify(sessions),
+          body: JSON.stringify({
+            sessions: sessions,
+            total: sessions.length,
+            limit: 50,
+            offset: 0,
+          }),
         });
       } else {
         await route.continue();
@@ -85,12 +90,18 @@ test.describe('Sessions', () => {
     const keyCapture = await mockKeyCreation(page);
 
     await page.route('**/api/v1/chat/sessions', async (route) => {
+      const sessions = [
+        { id: 'session-1', name: 'Previous Chat', created_at: new Date().toISOString() },
+      ];
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify([
-          { id: 'session-1', name: 'Previous Chat', created_at: new Date().toISOString() },
-        ]),
+        body: JSON.stringify({
+          sessions: sessions,
+          total: sessions.length,
+          limit: 50,
+          offset: 0,
+        }),
       });
     });
 
@@ -126,12 +137,18 @@ test.describe('Sessions', () => {
     const keyCapture = await mockKeyCreation(page);
 
     await page.route('**/api/v1/chat/sessions', async (route) => {
+      const sessions = [
+        { id: 'session-1', name: 'Existing Chat', created_at: new Date().toISOString() },
+      ];
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify([
-          { id: 'session-1', name: 'Existing Chat', created_at: new Date().toISOString() },
-        ]),
+        body: JSON.stringify({
+          sessions: sessions,
+          total: sessions.length,
+          limit: 50,
+          offset: 0,
+        }),
       });
     });
 
@@ -163,14 +180,20 @@ test.describe('Sessions', () => {
 
   test('sidebar shows multiple sessions', async ({ page }) => {
     await page.route('**/api/v1/chat/sessions', async (route) => {
+      const sessions = [
+        { id: 'session-1', name: 'First Conversation', created_at: new Date().toISOString() },
+        { id: 'session-2', name: 'Second Conversation', created_at: new Date(Date.now() - ONE_DAY_MS).toISOString() },
+        { id: 'session-3', name: 'Third Conversation', created_at: new Date(Date.now() - ONE_DAY_MS * 2).toISOString() },
+      ];
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify([
-          { id: 'session-1', name: 'First Conversation', created_at: new Date().toISOString() },
-          { id: 'session-2', name: 'Second Conversation', created_at: new Date(Date.now() - ONE_DAY_MS).toISOString() },
-          { id: 'session-3', name: 'Third Conversation', created_at: new Date(Date.now() - ONE_DAY_MS * 2).toISOString() },
-        ]),
+        body: JSON.stringify({
+          sessions: sessions,
+          total: sessions.length,
+          limit: 50,
+          offset: 0,
+        }),
       });
     });
 
@@ -187,13 +210,19 @@ test.describe('Sessions', () => {
 
   test('highlights current session in sidebar', async ({ page }) => {
     await page.route('**/api/v1/chat/sessions', async (route) => {
+      const sessions = [
+        { id: 'session-1', name: 'First Chat', created_at: new Date().toISOString() },
+        { id: 'session-2', name: 'Second Chat', created_at: new Date().toISOString() },
+      ];
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify([
-          { id: 'session-1', name: 'First Chat', created_at: new Date().toISOString() },
-          { id: 'session-2', name: 'Second Chat', created_at: new Date().toISOString() },
-        ]),
+        body: JSON.stringify({
+          sessions: sessions,
+          total: sessions.length,
+          limit: 50,
+          offset: 0,
+        }),
       });
     });
 

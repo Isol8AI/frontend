@@ -36,7 +36,7 @@ describe('useApi hook', () => {
   describe('get', () => {
     it('fetches models from /chat/models', async () => {
       const { result } = renderHook(() => useApi());
-      const response = await result.current.get('/chat/models');
+      const response = await result.current.get('/chat/models') as unknown[];
 
       expect(response).toBeInstanceOf(Array);
       expect(response.length).toBeGreaterThan(0);
@@ -44,11 +44,21 @@ describe('useApi hook', () => {
 
     it('fetches sessions from /chat/sessions', async () => {
       const { result } = renderHook(() => useApi());
-      const sessions = await result.current.get('/chat/sessions');
+      const response = await result.current.get('/chat/sessions') as {
+        sessions: Array<{ id: string; name: string }>;
+        total: number;
+        limit: number;
+        offset: number;
+      };
 
-      expect(sessions).toBeInstanceOf(Array);
-      expect(sessions[0]).toHaveProperty('id');
-      expect(sessions[0]).toHaveProperty('name');
+      // Backend returns paginated response: { sessions: [...], total, limit, offset }
+      expect(response).toHaveProperty('sessions');
+      expect(response).toHaveProperty('total');
+      expect(response).toHaveProperty('limit');
+      expect(response).toHaveProperty('offset');
+      expect(response.sessions).toBeInstanceOf(Array);
+      expect(response.sessions[0]).toHaveProperty('id');
+      expect(response.sessions[0]).toHaveProperty('name');
     });
   });
 

@@ -15,6 +15,13 @@ const CLERK_TIMEOUT = 10000;
 
 export async function signInWithClerk(page: Page): Promise<void> {
   await setupClerkTestingToken({ page });
+
+  // Enable embedding test mode to avoid loading the heavy ML model (~22MB)
+  // This prevents tests from timing out while waiting for model initialization
+  await page.addInitScript(() => {
+    (window as unknown as { __EMBEDDINGS_TEST_MODE__: boolean }).__EMBEDDINGS_TEST_MODE__ = true;
+  });
+
   await page.goto('/');
   await page.waitForFunction(() => window.Clerk !== undefined, { timeout: CLERK_TIMEOUT });
   await page.waitForFunction(() => window.Clerk.loaded, { timeout: CLERK_TIMEOUT });

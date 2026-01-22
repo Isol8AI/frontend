@@ -1,16 +1,34 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { signInWithClerk } from './fixtures/auth.fixture.js';
 import {
   setupEncryption,
   unlockEncryption,
-  setupEncryptionMocks,
-  mockKeyCreation,
   createEncryptedStreamHandler,
   TEST_ENCLAVE_PUBLIC_KEY,
-  TEST_PASSCODE,
 } from './fixtures/encryption.fixture.js';
 
 const DEFAULT_TIMEOUT = 15000;
+
+/**
+ * Set up common mocks for chat tests.
+ * - Enables embedding test mode to avoid loading the heavy ML model
+ * - Mocks memories search to return empty (realistic for new user)
+ */
+async function setupChatTestMocks(page: Page): Promise<void> {
+  // Enable embedding test mode to avoid loading the heavy ML model
+  await page.addInitScript(() => {
+    (window as unknown as { __EMBEDDINGS_TEST_MODE__: boolean }).__EMBEDDINGS_TEST_MODE__ = true;
+  });
+
+  // Mock memories search to return empty (user has no memories yet)
+  await page.route('**/api/v1/memories/search', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ memories: [] }),
+    });
+  });
+}
 
 /**
  * Helper to set up or unlock encryption based on current state.
@@ -127,7 +145,10 @@ test.describe('Chat', () => {
   });
 
   test('sends message and receives streaming response after encryption setup', async ({ page }) => {
-    // Mock ONLY the encrypted chat stream (LLM response) - everything else is real
+    // Set up common mocks
+    await setupChatTestMocks(page);
+
+    // Mock the encrypted chat stream (LLM response)
     await page.route('**/api/v1/chat/encrypted/stream', async (route) => {
       const handler = createEncryptedStreamHandler(['Hello', '! I am ', 'an AI assistant.']);
       await handler(route);
@@ -152,6 +173,9 @@ test.describe('Chat', () => {
   });
 
   test('clears input after sending', async ({ page }) => {
+    // Set up common mocks
+    await setupChatTestMocks(page);
+
     await page.route('**/api/v1/chat/encrypted/stream', async (route) => {
       const handler = createEncryptedStreamHandler(['Response']);
       await handler(route);
@@ -192,6 +216,9 @@ test.describe('Chat', () => {
   });
 
   test('handles stream failure gracefully', async ({ page }) => {
+    // Set up common mocks
+    await setupChatTestMocks(page);
+
     await page.route('**/api/v1/chat/encrypted/stream', async (route) => {
       await route.fulfill({
         status: 500,
@@ -218,6 +245,9 @@ test.describe('Chat', () => {
   });
 
   test('sends on Enter key', async ({ page }) => {
+    // Set up common mocks
+    await setupChatTestMocks(page);
+
     await page.route('**/api/v1/chat/encrypted/stream', async (route) => {
       const handler = createEncryptedStreamHandler(['Response']);
       await handler(route);
@@ -251,5 +281,51 @@ test.describe('Chat', () => {
     const value = await textarea.inputValue();
     expect(value).toContain('Line 1');
     expect(value).toContain('Line 2');
+  });
+
+  test('processes extracted facts from stream response', async ({ page }) => {
+    // Set up common mocks
+    await setupChatTestMocks(page);
+
+    // Mock the encrypted chat stream with extracted facts
+    await page.route('**/api/v1/chat/encrypted/stream', async (route) => {
+      const handler = createEncryptedStreamHandler(
+        ['I noted that you prefer ', 'dark mode.'],
+        {
+          extractedFacts: [
+            {
+              subject: 'user',
+              predicate: 'prefers',
+              object: 'dark mode',
+              confidence: 0.9,
+              type: 'preference',
+            },
+          ],
+        }
+      );
+      await handler(route);
+    });
+
+    await page.goto('/');
+    await page.waitForLoadState('networkidle');
+
+    // Set up or unlock encryption (real backend)
+    await ensureEncryptionReady(page);
+
+    // Now send a message that should trigger fact extraction
+    const textarea = page.locator('textarea[placeholder*="message"]');
+    await expect(textarea).toBeVisible();
+    await textarea.fill('I really prefer dark mode for coding');
+    await page.locator('[data-testid="send-button"]').click();
+
+    // Verify message was sent
+    await expect(page.locator('text=I really prefer dark mode for coding')).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+
+    // Verify response was decrypted and displayed
+    await expect(page.locator('text=/dark mode/i')).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+
+    // Note: The extracted facts are stored in IndexedDB, which is not directly visible in the UI.
+    // This test verifies the full flow works without errors.
+    // For more comprehensive fact storage testing, see the unit tests in store.test.ts.
   });
 });

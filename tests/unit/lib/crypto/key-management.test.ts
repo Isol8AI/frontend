@@ -20,10 +20,9 @@ import {
   toStoreKeysRequest,
   formatRecoveryCode,
   parseRecoveryCode,
-  type EncryptedKeyMaterial,
   type KeySetupResult,
 } from '@/lib/crypto/key-management';
-import { hexToBytes, bytesToHex } from '@/lib/crypto/primitives';
+import { hexToBytes } from '@/lib/crypto/primitives';
 
 // =============================================================================
 // Key Generation Tests

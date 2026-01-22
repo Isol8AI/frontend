@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useUser } from "@clerk/nextjs";
 import Link from "next/link";
 
@@ -9,12 +9,17 @@ import { MessageList } from "./MessageList";
 import { ModelSelector } from "./ModelSelector";
 import { useApi } from "@/lib/api";
 import { useEncryption } from "@/hooks/useEncryption";
-import { useChat, type ChatMessage } from "@/hooks/useChat";
+import { useChat } from "@/hooks/useChat";
+import { useOrgEncryptionStatus } from "@/hooks/useOrgEncryptionStatus";
+import { useOrgContext } from "@/components/providers/OrganizationProvider";
 import { SetupEncryptionPrompt } from "@/components/encryption/SetupEncryptionPrompt";
 import { UnlockEncryptionPrompt } from "@/components/encryption/UnlockEncryptionPrompt";
+import { OrgEncryptionSetupPrompt } from "@/components/encryption/OrgEncryptionSetupPrompt";
+import { AwaitingOrgEncryption } from "@/components/encryption/AwaitingOrgEncryption";
+import { AwaitingOrgKeyDistribution } from "@/components/encryption/AwaitingOrgKeyDistribution";
 import { EncryptionStatusBadge } from "@/components/encryption/EncryptionStatusBadge";
 import { Button } from "@/components/ui/button";
-import { Settings, Shield } from "lucide-react";
+import { Settings } from "lucide-react";
 
 interface Model {
   id: string;
@@ -61,7 +66,10 @@ export function ChatWindow(): React.ReactElement {
   const api = useApi();
   const { user } = useUser();
   const encryption = useEncryption();
+  const { orgId, isOrgAdmin } = useOrgContext();
+  const orgEncryption = useOrgEncryptionStatus(orgId);
   const encryptedChat = useChat({
+    orgId,
     onSessionChange: () => {
       window.dispatchEvent(new CustomEvent("sessionUpdated"));
     },
@@ -96,6 +104,18 @@ export function ChatWindow(): React.ReactElement {
     loadModels();
   }, [user, api]);
 
+  // Track previous orgId to detect context changes
+  const prevOrgIdRef = useRef<string | null | undefined>(undefined);
+
+  // Clear session when org context changes (but not on initial mount)
+  useEffect(() => {
+    // Skip initial mount (when prevOrgIdRef is undefined)
+    if (prevOrgIdRef.current !== undefined && prevOrgIdRef.current !== orgId) {
+      encryptedChat.clearSession();
+    }
+    prevOrgIdRef.current = orgId;
+  }, [orgId, encryptedChat]);
+
   // Handle new chat event
   useEffect(() => {
     function handleNewChat(): void {
@@ -121,6 +141,30 @@ export function ChatWindow(): React.ReactElement {
     window.addEventListener("selectSession", handleSelectSession);
     return () => window.removeEventListener("selectSession", handleSelectSession);
   }, [encryptedChat]);
+
+  // Auto-unlock org key when personal keys are unlocked and user has distributed key
+  useEffect(() => {
+    if (
+      encryption.state.isUnlocked &&
+      orgId &&
+      orgEncryption.userHasOrgKey &&
+      orgEncryption.encryptedOrgKey &&
+      !encryption.isOrgUnlocked
+    ) {
+      try {
+        encryption.unlockOrgKey(orgEncryption.encryptedOrgKey);
+      } catch (err) {
+        console.error("Failed to auto-unlock org key:", err);
+      }
+    }
+  }, [
+    encryption.state.isUnlocked,
+    orgId,
+    orgEncryption.userHasOrgKey,
+    orgEncryption.encryptedOrgKey,
+    encryption.isOrgUnlocked,
+    encryption,
+  ]);
 
   // Handle sending a message
   const handleSend = useCallback(async (content: string): Promise<void> => {
@@ -187,6 +231,85 @@ export function ChatWindow(): React.ReactElement {
         </div>
       </div>
     );
+  }
+
+  // ===== ORGANIZATION ENCRYPTION CHECKS =====
+  // Only run when in organization context (orgId is present)
+  if (orgId) {
+    // Loading org encryption status
+    if (orgEncryption.isLoading) {
+      return (
+        <div className="flex flex-col h-full items-center justify-center">
+          <div className="animate-pulse text-muted-foreground">
+            Checking organization encryption...
+          </div>
+        </div>
+      );
+    }
+
+    // Case 1: Org has no encryption set up
+    if (!orgEncryption.orgHasEncryption) {
+      if (isOrgAdmin) {
+        // Admin can set up org encryption
+        return (
+          <div className="flex flex-col h-full">
+            <ModelHeader
+              models={models}
+              selectedModel={selectedModel}
+              onModelChange={setSelectedModel}
+              disabled={true}
+            />
+            <div className="flex-1 flex flex-col items-center justify-center p-4">
+              <OrgEncryptionSetupPrompt orgId={orgId} onSuccess={orgEncryption.refetch} />
+            </div>
+          </div>
+        );
+      } else {
+        // Member must wait for admin to set up encryption
+        return (
+          <div className="flex flex-col h-full">
+            <ModelHeader
+              models={models}
+              selectedModel={selectedModel}
+              onModelChange={setSelectedModel}
+              disabled={true}
+            />
+            <div className="flex-1 flex flex-col items-center justify-center p-4">
+              <AwaitingOrgEncryption />
+            </div>
+          </div>
+        );
+      }
+    }
+
+    // Case 2: Org has encryption but user doesn't have distributed key
+    if (!orgEncryption.userHasOrgKey) {
+      return (
+        <div className="flex flex-col h-full">
+          <ModelHeader
+            models={models}
+            selectedModel={selectedModel}
+            onModelChange={setSelectedModel}
+            disabled={true}
+          />
+          <div className="flex-1 flex flex-col items-center justify-center p-4">
+            <AwaitingOrgKeyDistribution />
+          </div>
+        </div>
+      );
+    }
+
+    // Case 3: User has key - auto-unlock happens via useEffect above
+    // If org key is not yet unlocked, show loading while auto-unlock happens
+    if (!encryption.isOrgUnlocked) {
+      return (
+        <div className="flex flex-col h-full items-center justify-center">
+          <div className="animate-pulse text-muted-foreground">
+            Unlocking organization encryption...
+          </div>
+        </div>
+      );
+    }
   }
 
   // Show error message if there's an encryption error
