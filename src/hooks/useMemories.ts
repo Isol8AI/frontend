@@ -21,11 +21,18 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { useAuth } from '@clerk/nextjs';
 import { BACKEND_URL } from '@/lib/api';
 import { useEncryption } from './useEncryption';
-import {
-  generateEmbedding,
-  initEmbeddings,
-  isEmbeddingsReady,
-} from '@/lib/embeddings/client-embeddings';
+// Dynamic import to prevent bundling heavy ML packages in serverless functions
+// These packages (onnxruntime-node ~400MB) exceed Vercel's 250MB limit
+type EmbeddingsModule = typeof import('@/lib/embeddings/client-embeddings');
+let embeddingsModule: EmbeddingsModule | null = null;
+
+async function getEmbeddingsModule(): Promise<EmbeddingsModule> {
+  if (!embeddingsModule) {
+    embeddingsModule = await import('@/lib/embeddings/client-embeddings');
+  }
+  return embeddingsModule;
+}
+
 import {
   decryptStoredMemory,
   reEncryptMemoryForTransport,
@@ -111,16 +118,18 @@ export function useMemories(options: UseMemoriesOptions = {}): UseMemoriesReturn
   const encryption = useEncryption();
   const isOrgContext = !!orgId;
 
-  const [isReady, setIsReady] = useState(isEmbeddingsReady());
+  const [isReady, setIsReady] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Track initialization
   const initPromiseRef = useRef<Promise<void> | null>(null);
 
-  // Check readiness on mount
+  // Check readiness on mount (async)
   useEffect(() => {
-    setIsReady(isEmbeddingsReady());
+    getEmbeddingsModule().then((mod) => {
+      setIsReady(mod.isEmbeddingsReady());
+    });
   }, []);
 
   /**
@@ -129,7 +138,9 @@ export function useMemories(options: UseMemoriesOptions = {}): UseMemoriesReturn
    * early for better UX (e.g., on page load).
    */
   const initializeEmbeddings = useCallback(async (): Promise<void> => {
-    if (isEmbeddingsReady()) {
+    const mod = await getEmbeddingsModule();
+
+    if (mod.isEmbeddingsReady()) {
       setIsReady(true);
       return;
     }
@@ -142,7 +153,7 @@ export function useMemories(options: UseMemoriesOptions = {}): UseMemoriesReturn
     setError(null);
     initPromiseRef.current = (async () => {
       try {
-        await initEmbeddings();
+        await mod.initEmbeddings();
         setIsReady(true);
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Failed to load embedding model';
@@ -223,13 +234,15 @@ export function useMemories(options: UseMemoriesOptions = {}): UseMemoriesReturn
     setError(null);
 
     try {
+      const mod = await getEmbeddingsModule();
+
       // Initialize embeddings if needed
-      if (!isEmbeddingsReady()) {
+      if (!mod.isEmbeddingsReady()) {
         await initializeEmbeddings();
       }
 
       // Generate embedding from query
-      const embedding = await generateEmbedding(query);
+      const embedding = await mod.generateEmbedding(query);
 
       // Get auth token
       const token = await getToken();

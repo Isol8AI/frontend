@@ -48,7 +48,18 @@ import {
   formatForLLM,
   type Memory,
 } from '@/lib/temporal-facts';
-import { generateEmbedding, generateEmbeddings } from '@/lib/embeddings/client-embeddings';
+
+// Dynamic import to prevent bundling heavy ML packages in serverless functions
+// These packages (onnxruntime-node ~400MB) exceed Vercel's 250MB limit
+type EmbeddingsModule = typeof import('@/lib/embeddings/client-embeddings');
+let embeddingsModule: EmbeddingsModule | null = null;
+
+async function getEmbeddingsModule(): Promise<EmbeddingsModule> {
+  if (!embeddingsModule) {
+    embeddingsModule = await import('@/lib/embeddings/client-embeddings');
+  }
+  return embeddingsModule;
+}
 
 // =============================================================================
 // Types
@@ -347,10 +358,11 @@ export function useTemporalFacts(): UseTemporalFactsReturn {
         return [];
       }
 
-      // Generate embeddings for query and all facts
-      const queryEmbedding = await generateEmbedding(query);
+      // Generate embeddings for query and all facts (dynamic import)
+      const mod = await getEmbeddingsModule();
+      const queryEmbedding = await mod.generateEmbedding(query);
       const factTexts = facts.map(f => `${f.subject} ${f.predicate} ${f.object}`);
-      const factEmbeddings = await generateEmbeddings(factTexts);
+      const factEmbeddings = await mod.generateEmbeddings(factTexts);
 
       // Compute similarities
       const similarities = factEmbeddings.map(emb => cosineSimilarity(queryEmbedding, emb));
@@ -382,12 +394,13 @@ export function useTemporalFacts(): UseTemporalFactsReturn {
       const scoredFacts = await searchRelevantFacts(query, limit);
 
       // If we have memories, score them too (simplified - use their salience)
-      const queryEmbedding = await generateEmbedding(query);
+      const mod = await getEmbeddingsModule();
+      const queryEmbedding = await mod.generateEmbedding(query);
       const scoredMemories: Array<[Memory, number]> = [];
 
       if (memories.length > 0) {
         const memoryTexts = memories.map(m => m.content);
-        const memoryEmbeddings = await generateEmbeddings(memoryTexts);
+        const memoryEmbeddings = await mod.generateEmbeddings(memoryTexts);
 
         for (let i = 0; i < memories.length; i++) {
           const similarity = cosineSimilarity(queryEmbedding, memoryEmbeddings[i]);
