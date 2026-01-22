@@ -8,6 +8,21 @@ const nextConfig: NextConfig = {
   // Empty turbopack config to silence warning (we use --webpack flag in build script)
   turbopack: {},
 
+  // Exclude heavy ML packages from Vercel's output file tracing
+  // We do CLIENT-SIDE inference only, so we don't need onnxruntime-node at all
+  // See: https://github.com/huggingface/transformers.js/issues/1164
+  // The problematic files are NESTED inside @huggingface/transformers
+  outputFileTracingExcludes: {
+    '*': [
+      // Exclude all onnxruntime-node binaries (400MB+) - not needed for client-side inference
+      'node_modules/@huggingface/transformers/node_modules/onnxruntime-node/**/*',
+      'node_modules/onnxruntime-node/**/*',
+      // Exclude sharp native binaries (32MB+) - not needed for our use case
+      'node_modules/@img/sharp-libvips-linux-x64/**/*',
+      'node_modules/@img/sharp-libvips-linuxmusl-x64/**/*',
+    ],
+  },
+
   // Externalize large packages from serverless functions
   // These are client-only and should not be bundled server-side
   serverExternalPackages: [
