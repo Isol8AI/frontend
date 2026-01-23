@@ -48,10 +48,14 @@ jobs:
         run: npm run lint
 
       - name: Type check
-        run: npm run type-check
+        run: npx tsc --noEmit
 
       - name: Build
         run: npm run build
+        env:
+          # Dummy values for build verification
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_dummy
+          NEXT_PUBLIC_API_URL: http://localhost:8000
 
   # ===========================================================================
   # Deploy to Dev (automatic)
