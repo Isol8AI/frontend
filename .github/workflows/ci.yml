@@ -1,20 +1,13 @@
 # =============================================================================
 # Frontend CI Workflow
 # =============================================================================
-# Runs on all PRs and pushes to main
-# - Type checking
-# - Linting (ESLint)
-# - Build verification
-#
-# NOTE: Vercel handles actual deployment via GitHub integration.
-# This workflow ensures code quality before Vercel builds.
+# Runs on PRs only - provides fast feedback before merge.
+# Deployment is handled by deploy.yml on push to main.
 # =============================================================================
 
 name: Frontend CI
 
 on:
-  push:
-    branches: [main]
   pull_request:
     branches: [main]
 
