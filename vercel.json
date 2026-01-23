@@ -29,10 +29,5 @@
       ]
     }
   ],
-  "rewrites": [
-    {
-      "source": "/api/v1/:path*",
-      "destination": "${BACKEND_URL}/api/v1/:path*"
-    }
-  ]
+  "rewrites": []
 }
