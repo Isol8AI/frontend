@@ -43,7 +43,7 @@ describe('Sidebar', () => {
 
     it('renders version footer', () => {
       render(<Sidebar />);
-      expect(screen.getByText('Freebird v0.1')).toBeInTheDocument();
+      expect(screen.getByText('Isol8 v0.1')).toBeInTheDocument();
     });
 
     it('applies custom className', () => {

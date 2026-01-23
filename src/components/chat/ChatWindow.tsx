@@ -352,7 +352,7 @@ export function ChatWindow(): React.ReactElement {
 
         <div className="flex-1 flex flex-col items-center justify-center p-4">
           <div className="text-center mb-8">
-            <h1 className="text-3xl font-bold mb-2">Freebird</h1>
+            <h1 className="text-3xl font-bold mb-2">Isol8</h1>
             <p className="text-muted-foreground">
               Start a conversation with any model
             </p>

@@ -68,7 +68,7 @@ export function Sidebar({
       </ScrollArea>
 
       <div className="p-4 border-t text-xs text-muted-foreground text-center">
-        Freebird v0.1
+        Isol8 v0.1
       </div>
     </div>
   );

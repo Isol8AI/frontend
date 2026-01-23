@@ -6,7 +6,7 @@ import path from 'path';
 dotenv.config({ path: path.resolve(__dirname, '.env.local') });
 
 /**
- * Playwright E2E test configuration for Freebird.
+ * Playwright E2E test configuration for Isol8.
  *
  * Uses Clerk Testing Tokens for authentication bypass.
  * See: https://clerk.com/docs/testing/playwright/overview

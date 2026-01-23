@@ -31,7 +31,7 @@ import { FACT_TYPE_HALF_LIVES } from './types';
 // Configuration
 // =============================================================================
 
-const DB_NAME = 'freebird-temporal-facts';
+const DB_NAME = 'isol8-temporal-facts';
 const DB_VERSION = 2;  // Incremented for new schema
 const FACTS_STORE = 'facts';
 
