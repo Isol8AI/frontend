@@ -8,7 +8,8 @@ export const handlers = [
     return HttpResponse.json([
       { id: 'Qwen/Qwen2.5-72B-Instruct', name: 'Qwen 2.5 72B' },
       { id: 'meta-llama/Llama-3.3-70B-Instruct', name: 'Llama 3.3 70B' },
-      { id: 'google/gemma-2-2b-it', name: 'Gemma 2 2B' },
+      { id: 'google/gemma-2-9b-it', name: 'Gemma 2 9B' },
+      { id: 'Qwen/Qwen2.5-7B-Instruct', name: 'Qwen 2.5 7B' },
     ]);
   }),
 
