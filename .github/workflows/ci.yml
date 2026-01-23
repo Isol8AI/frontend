@@ -40,7 +40,6 @@ jobs:
 
       - name: Build
         env:
-          # Dummy values for build verification (Vercel provides real values)
-          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_dummy
-          NEXT_PUBLIC_API_URL: http://localhost:8000
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.CLERK_PUBLISHABLE_KEY }}
+          NEXT_PUBLIC_API_URL: https://api-dev.isol8.co/api/v1
         run: npm run build
