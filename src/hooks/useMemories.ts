@@ -262,7 +262,7 @@ export function useMemories(options: UseMemoriesOptions = {}): UseMemoriesReturn
           embedding,
           limit,
           org_id: orgId || undefined,
-          include_personal: true, // Always include personal memories in org context
+          include_personal: false, // Never cross personal/org memory boundaries
         }),
       });
 
@@ -377,7 +377,7 @@ export function useMemories(options: UseMemoriesOptions = {}): UseMemoriesReturn
       });
       if (orgId) {
         params.set('org_id', orgId);
-        params.set('include_personal', 'true');
+        params.set('include_personal', 'false'); // Never cross personal/org memory boundaries
       }
 
       const res = await fetch(`${BACKEND_URL}/memories?${params}`, {
