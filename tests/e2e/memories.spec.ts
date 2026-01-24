@@ -157,7 +157,7 @@ test.describe.serial('Memory Recall - Personal Context (Real LLM)', () => {
   });
 
   test('Step 1: User tells AI their favorite color', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/chat');
     await page.waitForLoadState('networkidle');
 
     // Set up encryption (uses real backend)
@@ -181,7 +181,7 @@ test.describe.serial('Memory Recall - Personal Context (Real LLM)', () => {
   });
 
   test('Step 2: In a new conversation, AI recalls the favorite color', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/chat');
     await page.waitForLoadState('networkidle');
 
     // Set up encryption
@@ -220,7 +220,7 @@ test.describe.serial('Memory Recall - Personal Context (Real LLM)', () => {
   });
 
   test('Step 3: Memories are visible on settings page', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/chat');
     await page.waitForLoadState('networkidle');
 
     // Set up encryption
@@ -272,7 +272,7 @@ test.describe.serial('Memory Recall - Organization Context (Real LLM)', () => {
   });
 
   test('Step 1: Set up and verify org access', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/chat');
     await page.waitForLoadState('networkidle');
 
     // Set up personal encryption
@@ -291,7 +291,7 @@ test.describe.serial('Memory Recall - Organization Context (Real LLM)', () => {
     await setActiveOrg(page, userOrg.orgId);
 
     // Navigate to force page to pick up new org context
-    await page.goto('/');
+    await page.goto('/chat');
     await page.waitForLoadState('networkidle');
 
     // Wait for org name to appear in UI (confirms org context is active)
@@ -301,7 +301,7 @@ test.describe.serial('Memory Recall - Organization Context (Real LLM)', () => {
       // Try again - sometimes Clerk takes a moment
       console.log('Org name not visible, re-setting org context...');
       await setActiveOrg(page, userOrg.orgId);
-      await page.goto('/');
+      await page.goto('/chat');
       await page.waitForLoadState('networkidle');
       await page.waitForTimeout(1000);
     }
@@ -331,7 +331,7 @@ test.describe.serial('Memory Recall - Organization Context (Real LLM)', () => {
   });
 
   test('Step 2: User tells AI about team preference in org context', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/chat');
     await page.waitForLoadState('networkidle');
 
     // First ensure personal encryption is set up
@@ -348,7 +348,7 @@ test.describe.serial('Memory Recall - Organization Context (Real LLM)', () => {
     await setActiveOrg(page, org.orgId);
 
     // Navigate to force page to pick up new org context
-    await page.goto('/');
+    await page.goto('/chat');
     await page.waitForLoadState('networkidle');
 
     // Wait for org name to appear in UI (confirms org context is active)
@@ -358,7 +358,7 @@ test.describe.serial('Memory Recall - Organization Context (Real LLM)', () => {
       // Try again - sometimes Clerk takes a moment
       console.log('Org name not visible, re-setting org context...');
       await setActiveOrg(page, org.orgId);
-      await page.goto('/');
+      await page.goto('/chat');
       await page.waitForLoadState('networkidle');
       await page.waitForTimeout(1000);
     }
@@ -402,7 +402,7 @@ test.describe.serial('Memory Recall - Organization Context (Real LLM)', () => {
   });
 
   test('Step 3: In org context, AI recalls the team preference', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/chat');
     await page.waitForLoadState('networkidle');
 
     // First ensure personal encryption is set up
@@ -419,7 +419,7 @@ test.describe.serial('Memory Recall - Organization Context (Real LLM)', () => {
     await setActiveOrg(page, org.orgId);
 
     // Navigate to force page to pick up new org context
-    await page.goto('/');
+    await page.goto('/chat');
     await page.waitForLoadState('networkidle');
 
     // Wait for org name to appear in UI (confirms org context is active)
@@ -429,7 +429,7 @@ test.describe.serial('Memory Recall - Organization Context (Real LLM)', () => {
       // Try again - sometimes Clerk takes a moment
       console.log('Org name not visible, re-setting org context...');
       await setActiveOrg(page, org.orgId);
-      await page.goto('/');
+      await page.goto('/chat');
       await page.waitForLoadState('networkidle');
       await page.waitForTimeout(1000);
     }
@@ -477,7 +477,7 @@ test.describe('Memory Settings Page - Facts Tab', () => {
   });
 
   test('Can view and switch between Memories and Facts tabs', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/chat');
     await page.waitForLoadState('networkidle');
 
     await ensureEncryptionReady(page);
@@ -513,7 +513,7 @@ test.describe('Memory Settings Page - Facts Tab', () => {
   });
 
   test('Facts list shows client-side extracted facts', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/chat');
     await page.waitForLoadState('networkidle');
 
     await ensureEncryptionReady(page);

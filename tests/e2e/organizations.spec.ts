@@ -48,7 +48,7 @@ test.describe('Organizations', () => {
   });
 
   test('organization switcher is visible in sidebar', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/chat');
     await page.waitForLoadState('networkidle');
 
     // Set up encryption first
@@ -61,7 +61,7 @@ test.describe('Organizations', () => {
   });
 
   test('shows context indicator in sidebar', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/chat');
     await page.waitForLoadState('networkidle');
 
     // Set up encryption first
@@ -91,7 +91,7 @@ test.describe('Organizations', () => {
       });
     });
 
-    await page.goto('/');
+    await page.goto('/chat');
     await page.waitForLoadState('networkidle');
 
     // Set up encryption first
@@ -115,7 +115,7 @@ test.describe('Organizations', () => {
       });
     });
 
-    await page.goto('/');
+    await page.goto('/chat');
     await page.waitForLoadState('networkidle');
 
     // Set up encryption first
@@ -146,7 +146,7 @@ test.describe('Organizations', () => {
       });
     });
 
-    await page.goto('/');
+    await page.goto('/chat');
     await page.waitForLoadState('networkidle');
 
     // Set up encryption first

@@ -102,7 +102,7 @@ test.describe('Chat', () => {
   });
 
   test('shows encryption setup or unlock prompt', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/chat');
     await page.waitForLoadState('networkidle');
 
     // User should see either setup prompt (new user) or unlock prompt (returning user)
@@ -116,7 +116,7 @@ test.describe('Chat', () => {
   });
 
   test('allows setting up or unlocking encryption', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/chat');
     await page.waitForLoadState('networkidle');
 
     // Handle either setup (new user) or unlock (returning user) with REAL backend
@@ -154,7 +154,7 @@ test.describe('Chat', () => {
       await handler(route);
     });
 
-    await page.goto('/');
+    await page.goto('/chat');
     await page.waitForLoadState('networkidle');
 
     // Set up or unlock encryption (real backend)
@@ -181,7 +181,7 @@ test.describe('Chat', () => {
       await handler(route);
     });
 
-    await page.goto('/');
+    await page.goto('/chat');
     await page.waitForLoadState('networkidle');
 
     // Set up or unlock encryption (real backend)
@@ -197,7 +197,7 @@ test.describe('Chat', () => {
   });
 
   test('allows model selection after encryption setup', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/chat');
     await page.waitForLoadState('networkidle');
 
     // Set up or unlock encryption (real backend)
@@ -227,7 +227,7 @@ test.describe('Chat', () => {
       });
     });
 
-    await page.goto('/');
+    await page.goto('/chat');
     await page.waitForLoadState('networkidle');
 
     // Set up or unlock encryption (real backend)
@@ -253,7 +253,7 @@ test.describe('Chat', () => {
       await handler(route);
     });
 
-    await page.goto('/');
+    await page.goto('/chat');
     await page.waitForLoadState('networkidle');
 
     // Set up or unlock encryption (real backend)
@@ -267,7 +267,7 @@ test.describe('Chat', () => {
   });
 
   test('does not send on Shift+Enter', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/chat');
     await page.waitForLoadState('networkidle');
 
     // Set up or unlock encryption (real backend)
@@ -306,7 +306,7 @@ test.describe('Chat', () => {
       await handler(route);
     });
 
-    await page.goto('/');
+    await page.goto('/chat');
     await page.waitForLoadState('networkidle');
 
     // Set up or unlock encryption (real backend)

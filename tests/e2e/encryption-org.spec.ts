@@ -68,7 +68,7 @@ test.describe.serial('Organization Encryption Flow', () => {
   });
 
   test('Step 1: User sets up personal encryption', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/chat');
 
     // Set up or unlock personal encryption first
     await ensureEncryptionReady(page);
@@ -87,7 +87,7 @@ test.describe.serial('Organization Encryption Flow', () => {
   });
 
   test('Step 2: User can access org encryption settings page', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/chat');
 
     // Set up or unlock personal encryption first
     await ensureEncryptionReady(page);
@@ -131,7 +131,7 @@ test.describe.serial('Organization Encryption Flow', () => {
   });
 
   test('Step 3: User can view org encryption status', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/chat');
 
     // Set up or unlock personal encryption first
     await ensureEncryptionReady(page);
@@ -161,7 +161,7 @@ test.describe.serial('Organization Encryption Flow', () => {
   });
 
   test('Step 4: Organization members page is accessible', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/chat');
 
     // Set up or unlock personal encryption first
     await ensureEncryptionReady(page);
@@ -219,7 +219,7 @@ test.describe.serial('Organization Encryption Admin Flow', () => {
   });
 
   test('Admin: sees appropriate encryption setup UI', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/chat');
 
     // Set up or unlock personal encryption first
     await ensureEncryptionReady(page);
@@ -266,7 +266,7 @@ test.describe.serial('Organization Encryption Admin Flow', () => {
   });
 
   test('Admin: can set up org encryption', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/chat');
 
     // Set up or unlock personal encryption first
     await ensureEncryptionReady(page);
@@ -328,7 +328,7 @@ test.describe.serial('Organization Encryption Admin Flow', () => {
   });
 
   test('Admin: can view pending key distributions', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/chat');
 
     // Set up or unlock personal encryption first
     await ensureEncryptionReady(page);
@@ -366,7 +366,7 @@ test.describe.serial('Organization Encryption Admin Flow', () => {
   });
 
   test('Admin: can access encryption audit log', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/chat');
 
     // Set up or unlock personal encryption first
     await ensureEncryptionReady(page);
@@ -424,7 +424,7 @@ test.describe('Organization Encryption Non-Admin', () => {
   });
 
   test('Non-admin: sees restricted access message', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/chat');
 
     // Set up or unlock personal encryption first
     await ensureEncryptionReady(page);
@@ -496,7 +496,7 @@ test.describe.serial('ChatWindow Organization Encryption Prompts', () => {
   });
 
   test('User in personal context sees chat after encryption setup', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/chat');
 
     // Set up or unlock personal encryption
     await ensureEncryptionReady(page);
@@ -506,7 +506,7 @@ test.describe.serial('ChatWindow Organization Encryption Prompts', () => {
   });
 
   test('Admin in org context without org encryption sees OrgEncryptionSetupPrompt', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/chat');
 
     // First set up personal encryption in personal context
     await clearActiveOrg(page);
@@ -562,7 +562,7 @@ test.describe.serial('ChatWindow Organization Encryption Prompts', () => {
   });
 
   test('Admin can set up org encryption from ChatWindow', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/chat');
 
     // First set up personal encryption in personal context
     await clearActiveOrg(page);
@@ -621,7 +621,7 @@ test.describe.serial('ChatWindow Organization Encryption Prompts', () => {
   });
 
   test('Member in org context without encryption sees AwaitingOrgEncryption', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/chat');
 
     // First set up personal encryption in personal context
     await clearActiveOrg(page);
@@ -677,7 +677,7 @@ test.describe.serial('ChatWindow Organization Encryption Prompts', () => {
   });
 
   test('User can switch back to personal context and see chat', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/chat');
 
     // First set up personal encryption in personal context
     await clearActiveOrg(page);

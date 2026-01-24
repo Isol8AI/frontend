@@ -103,7 +103,7 @@ async function setupEncryptionViaUI(page: Page, passcode: string = TEST_PASSCODE
   const alreadyHasKeysMsg = page.locator('text=User already has encryption keys');
   if (await alreadyHasKeysMsg.isVisible({ timeout: 2000 }).catch(() => false)) {
     console.log('User already has encryption keys, going to unlock instead');
-    await page.goto('/');
+    await page.goto('/chat');
     await page.waitForTimeout(500);
     await unlockEncryptionViaUI(page, passcode);
     return '';
@@ -302,7 +302,7 @@ test.describe('Encryption Setup', () => {
 test.describe('Encryption Unlock', () => {
   test('unlocks with correct passcode', async ({ page }) => {
     await signInWithClerk(page);
-    await page.goto('/');
+    await page.goto('/chat');
     await page.waitForTimeout(500);
 
     // Use the fixture's ensureEncryptionReady which handles both setup and unlock
@@ -331,7 +331,7 @@ test.describe('Encryption Unlock', () => {
     }
 
     // Navigate away to trigger unlock prompt
-    await page.goto('/');
+    await page.goto('/chat');
     await page.waitForTimeout(500);
 
     const unlockPrompt = page.locator('[data-testid="unlock-encryption-prompt"]');
@@ -355,7 +355,7 @@ test.describe('Encryption Unlock', () => {
 
   test('offers recovery code option', async ({ page }) => {
     await signInWithClerk(page);
-    await page.goto('/');
+    await page.goto('/chat');
 
     // Wait for either unlock prompt or chat to load
     const unlockPrompt = page.locator('[data-testid="unlock-encryption-prompt"]');
@@ -401,7 +401,7 @@ test.describe('Encrypted Chat', () => {
     });
 
     await signInWithClerk(page);
-    await page.goto('/');
+    await page.goto('/chat');
     await page.waitForLoadState('networkidle');
 
     // Set up or unlock encryption
@@ -469,7 +469,7 @@ test.describe('Encrypted Chat', () => {
 
   test('encrypted response is decrypted and displayed', async ({ page }) => {
     await signInWithClerk(page);
-    await page.goto('/');
+    await page.goto('/chat');
     await page.waitForLoadState('networkidle');
 
     // Set up or unlock encryption

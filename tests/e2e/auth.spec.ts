@@ -49,16 +49,27 @@ test.describe('Authenticated User', () => {
 
   test('can sign out', async ({ page }) => {
     await clerk.signOut({ page });
-    await expect(page).toHaveURL(/sign-in/, { timeout: DEFAULT_TIMEOUT });
+    // After sign out, user goes to landing page (/) not sign-in
+    // The landing page is public, so no redirect to sign-in
+    // Note: toHaveURL receives full URL like "http://localhost:3000/"
+    await expect(page).toHaveURL(/\/$|\/sign-in/, { timeout: DEFAULT_TIMEOUT });
   });
 });
 
 test.describe('Unauthenticated Access', () => {
   test.use({ storageState: { cookies: [], origins: [] } });
 
-  test('redirects to sign-in', async ({ page }) => {
-    await page.goto('/');
+  test('redirects to sign-in when accessing protected route', async ({ page }) => {
+    // / is now a public landing page, /chat is protected
+    await page.goto('/chat');
     await expect(page).toHaveURL(/sign-in/, { timeout: DEFAULT_TIMEOUT });
+  });
+
+  test('landing page is accessible without auth', async ({ page }) => {
+    await page.goto('/');
+    // Landing page should load without redirect
+    await expect(page).toHaveURL('/');
+    await expect(page.locator('body')).toBeVisible();
   });
 
   test('sign-in page is accessible', async ({ page }) => {

@@ -36,6 +36,7 @@ async function getEmbeddingsModule(): Promise<EmbeddingsModule> {
 import {
   decryptStoredMemory,
   reEncryptMemoryForTransport,
+  encryptMessageToEnclave,
   type SerializedEncryptedPayload,
 } from '@/lib/crypto/message-crypto';
 
@@ -96,8 +97,10 @@ export interface UseMemoriesReturn {
   error: string | null;
   /** Initialize the embedding model (called automatically on first search) */
   initializeEmbeddings: () => Promise<void>;
-  /** Search memories by semantic similarity */
+  /** Search memories by semantic similarity (client-side embedding) */
   searchMemories: (query: string, limit?: number) => Promise<DecryptedMemory[]>;
+  /** Search memories with encrypted query (server-side embedding in enclave) */
+  searchMemoriesEncrypted: (query: string, limit?: number) => Promise<DecryptedMemory[]>;
   /** Search and prepare memories for transport to enclave */
   searchAndPrepareForTransport: (query: string, limit?: number) => Promise<TransportMemory[]>;
   /** List all memories (for settings UI) */
@@ -297,8 +300,104 @@ export function useMemories(options: UseMemoriesOptions = {}): UseMemoriesReturn
   }, [encryption, isOrgContext, orgId, getToken, initializeEmbeddings, decryptMemory]);
 
   /**
+   * Search memories with encrypted query (server-side embedding generation).
+   *
+   * This method:
+   * 1. Encrypts the query to the enclave's public key
+   * 2. Sends encrypted query to the server
+   * 3. Enclave decrypts and generates embedding
+   * 4. Server searches memories using the embedding
+   * 5. Returns encrypted memories for client-side decryption
+   *
+   * This is more secure than client-side embedding as the query
+   * plaintext never leaves the client except encrypted to the enclave.
+   */
+  const searchMemoriesEncrypted = useCallback(async (
+    query: string,
+    limit: number = 10
+  ): Promise<DecryptedMemory[]> => {
+    // Ensure we have the right keys unlocked
+    if (isOrgContext && !encryption.isOrgUnlocked) {
+      throw new Error('Organization encryption keys not unlocked');
+    }
+    if (!encryption.state.isUnlocked) {
+      throw new Error('Personal encryption keys not unlocked');
+    }
+    if (!encryption.state.enclavePublicKey) {
+      throw new Error('Enclave public key not available');
+    }
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      // Encrypt query to enclave
+      const encryptedQuery = encryptMessageToEnclave(
+        encryption.state.enclavePublicKey,
+        query
+      );
+
+      // Get auth token
+      const token = await getToken();
+      if (!token) {
+        throw new Error('Not authenticated');
+      }
+
+      // Call encrypted search API
+      const res = await fetch(`${BACKEND_URL}/memories/search/encrypted`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          encrypted_query: encryptedQuery,
+          limit,
+          org_id: orgId || undefined,
+          include_personal: false, // Never cross personal/org memory boundaries
+        }),
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.detail || 'Failed to search memories');
+      }
+
+      const data = await res.json();
+      const encryptedMemories: EncryptedMemory[] = data.memories || [];
+
+      // Decrypt each memory
+      const decryptedMemories: DecryptedMemory[] = [];
+      for (const encrypted of encryptedMemories) {
+        try {
+          const decrypted = decryptMemory(encrypted);
+          decryptedMemories.push(decrypted);
+        } catch (decryptError) {
+          console.warn(`Failed to decrypt memory ${encrypted.id}:`, decryptError);
+        }
+      }
+
+      return decryptedMemories;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to search memories';
+      setError(message);
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
+  }, [encryption, isOrgContext, orgId, getToken, decryptMemory]);
+
+  /**
    * Search memories and prepare them for transport to enclave.
-   * This decrypts the memories and re-encrypts them to the enclave's public key.
+   *
+   * Zero-Trust Flow (Option A):
+   * 1. Encrypt query to enclave (enclave generates embedding)
+   * 2. Search returns encrypted memories
+   * 3. Client decrypts with private key
+   * 4. Client re-encrypts to enclave for transport
+   *
+   * This ensures the embedding (which semantically represents the query)
+   * is never exposed to the server - only the enclave sees it.
    */
   const searchAndPrepareForTransport = useCallback(async (
     query: string,
@@ -308,8 +407,9 @@ export function useMemories(options: UseMemoriesOptions = {}): UseMemoriesReturn
       throw new Error('Enclave public key not available');
     }
 
-    // Search and decrypt memories
-    const memories = await searchMemories(query, limit);
+    // ZERO-TRUST: Use encrypted search (enclave generates embedding)
+    // This replaces the old client-side embedding approach
+    const memories = await searchMemoriesEncrypted(query, limit);
 
     // Re-encrypt each memory for transport to enclave
     const transportMemories: TransportMemory[] = memories.map((memory) => {
@@ -344,7 +444,7 @@ export function useMemories(options: UseMemoriesOptions = {}): UseMemoriesReturn
     });
 
     return transportMemories;
-  }, [encryption, isOrgContext, searchMemories]);
+  }, [encryption, isOrgContext, searchMemoriesEncrypted]);
 
   /**
    * List all memories for the current context (settings UI).
@@ -501,6 +601,7 @@ export function useMemories(options: UseMemoriesOptions = {}): UseMemoriesReturn
     error,
     initializeEmbeddings,
     searchMemories,
+    searchMemoriesEncrypted,
     searchAndPrepareForTransport,
     listMemories,
     deleteMemory,

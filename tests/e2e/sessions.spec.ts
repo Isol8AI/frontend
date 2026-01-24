@@ -65,7 +65,7 @@ test.describe('Sessions', () => {
       await handler(route);
     });
 
-    await page.goto('/');
+    await page.goto('/chat');
     await page.waitForLoadState('networkidle');
 
     // Set up encryption first
@@ -105,7 +105,7 @@ test.describe('Sessions', () => {
       });
     });
 
-    await page.goto('/');
+    await page.goto('/chat');
     await page.waitForLoadState('networkidle');
 
     // Set up encryption first - this captures the user's public key
@@ -152,7 +152,7 @@ test.describe('Sessions', () => {
       });
     });
 
-    await page.goto('/');
+    await page.goto('/chat');
     await page.waitForLoadState('networkidle');
 
     // Set up encryption first - this captures the user's public key
@@ -197,7 +197,7 @@ test.describe('Sessions', () => {
       });
     });
 
-    await page.goto('/');
+    await page.goto('/chat');
     await page.waitForLoadState('networkidle');
 
     // Set up encryption first
@@ -234,7 +234,7 @@ test.describe('Sessions', () => {
       });
     });
 
-    await page.goto('/');
+    await page.goto('/chat');
     await page.waitForLoadState('networkidle');
 
     // Set up encryption first

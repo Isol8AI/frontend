@@ -13,6 +13,65 @@ export { expect, clerk };
 
 const CLERK_TIMEOUT = 10000;
 
+/**
+ * Sync the authenticated user to the backend database.
+ * This MUST be called after Clerk sign-in before any other API calls.
+ */
+export async function syncUserToBackend(page: Page): Promise<void> {
+  // Wait for Clerk to be fully loaded and have a session
+  await page.waitForFunction(
+    () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const clerk = (window as any).Clerk;
+      return clerk?.loaded && clerk?.session;
+    },
+    { timeout: CLERK_TIMEOUT }
+  );
+
+  const result = await page.evaluate(async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const clerk = (window as any).Clerk;
+
+    // Wait a bit for session to fully initialize
+    let token = await clerk?.session?.getToken();
+
+    // Retry a few times if token is not immediately available
+    for (let i = 0; i < 5 && !token; i++) {
+      await new Promise(resolve => setTimeout(resolve, 200));
+      token = await clerk?.session?.getToken();
+    }
+
+    if (!token) {
+      return { success: false, error: 'No auth token after retries' };
+    }
+
+    try {
+      const response = await fetch('http://localhost:8000/api/v1/users/sync', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (response.ok) {
+        return { success: true, status: response.status };
+      }
+
+      const errorText = await response.text();
+      return { success: false, status: response.status, error: errorText };
+    } catch (e) {
+      return { success: false, error: String(e) };
+    }
+  });
+
+  if (result.success) {
+    console.log(`User synced to backend (status: ${result.status})`);
+  } else {
+    console.warn(`Failed to sync user to backend: ${result.error || result.status}`);
+  }
+}
+
 export async function signInWithClerk(page: Page): Promise<void> {
   await setupClerkTestingToken({ page });
 
@@ -22,7 +81,7 @@ export async function signInWithClerk(page: Page): Promise<void> {
     (window as unknown as { __EMBEDDINGS_TEST_MODE__: boolean }).__EMBEDDINGS_TEST_MODE__ = true;
   });
 
-  await page.goto('/');
+  await page.goto('/chat');
   await page.waitForFunction(() => window.Clerk !== undefined, { timeout: CLERK_TIMEOUT });
   await page.waitForFunction(() => window.Clerk.loaded, { timeout: CLERK_TIMEOUT });
   await clerk.signIn({
@@ -31,7 +90,12 @@ export async function signInWithClerk(page: Page): Promise<void> {
   });
   // clerk.signIn is a testing utility that sets auth state but doesn't trigger navigation.
   // Manually navigate to / after signing in.
-  await page.goto('/');
+  await page.goto('/chat');
+
+  // IMPORTANT: Sync user to backend database before any API calls.
+  // The frontend normally does this via ChatLayout, but E2E tests may make
+  // direct API calls before ChatLayout renders.
+  await syncUserToBackend(page);
 }
 
 export function createMockChatStream(chunks: string[]): string {

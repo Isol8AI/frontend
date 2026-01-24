@@ -69,7 +69,7 @@ test.describe.serial('Organization Creation and Dual Chat Flow', () => {
   });
 
   test('Step 1: Set up personal encryption', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/chat');
 
     // Set up or unlock personal encryption
     await ensureEncryptionReady(page);
@@ -83,7 +83,7 @@ test.describe.serial('Organization Creation and Dual Chat Flow', () => {
   });
 
   test('Step 2: Create new organization via Clerk', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/chat');
 
     // Ensure personal encryption is ready first
     await ensureEncryptionReady(page);
@@ -110,7 +110,7 @@ test.describe.serial('Organization Creation and Dual Chat Flow', () => {
       return;
     }
 
-    await page.goto('/');
+    await page.goto('/chat');
     await page.waitForLoadState('networkidle');
 
     // Wait for either unlock prompt or chat textarea to appear
@@ -195,7 +195,7 @@ test.describe.serial('Organization Creation and Dual Chat Flow', () => {
       createEncryptedStreamHandler(['Hello from personal chat!'])
     );
 
-    await page.goto('/');
+    await page.goto('/chat');
 
     // Ensure personal encryption is ready
     await ensureEncryptionReady(page);
@@ -239,7 +239,7 @@ test.describe.serial('Organization Creation and Dual Chat Flow', () => {
       createEncryptedStreamHandler(['Hello from org chat!'])
     );
 
-    await page.goto('/');
+    await page.goto('/chat');
 
     const unlockPrompt = page.locator('[data-testid="unlock-encryption-prompt"]');
     const textarea = page.locator('textarea[placeholder*="message"]');
@@ -315,7 +315,7 @@ test.describe.serial('Organization Creation and Dual Chat Flow', () => {
       return;
     }
 
-    await page.goto('/');
+    await page.goto('/chat');
     await page.waitForLoadState('networkidle');
 
     const unlockPrompt = page.locator('[data-testid="unlock-encryption-prompt"]');
@@ -389,7 +389,7 @@ test.describe.serial('Organization Creation and Dual Chat Flow', () => {
 
         // Sign in and wait for Clerk to be fully ready
         await signInWithClerk(page);
-        await page.goto('/');
+        await page.goto('/chat');
         await page.waitForLoadState('networkidle');
 
         // Wait for Clerk to be fully loaded
@@ -446,7 +446,7 @@ test.describe('Organization Chat Edge Cases', () => {
       });
     });
 
-    await page.goto('/');
+    await page.goto('/chat');
     await ensureEncryptionReady(page);
 
     const textarea = page.locator('textarea[placeholder*="message"]');
@@ -468,7 +468,7 @@ test.describe('Organization Chat Edge Cases', () => {
   });
 
   test('Personal encryption unlock is required before org access', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/chat');
 
     // Don't unlock encryption - just wait for unlock prompt
     const unlockPrompt = page.locator('[data-testid="unlock-encryption-prompt"]');
