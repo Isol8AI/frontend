@@ -6,7 +6,6 @@ import Link from "next/link";
 
 import { ChatInput } from "./ChatInput";
 import { MessageList } from "./MessageList";
-import { ModelSelector } from "./ModelSelector";
 import { useApi } from "@/lib/api";
 import { useEncryption } from "@/hooks/useEncryption";
 import { useChat } from "@/hooks/useChat";
@@ -26,34 +25,7 @@ interface Model {
   name: string;
 }
 
-interface ModelHeaderProps {
-  models: Model[];
-  selectedModel: string;
-  onModelChange: (model: string) => void;
-  disabled: boolean;
-}
 
-function ModelHeader({ models, selectedModel, onModelChange, disabled }: ModelHeaderProps): React.ReactElement {
-  return (
-    <div className="flex items-center gap-2 p-2 border-b">
-      <span className="text-sm text-muted-foreground">Model:</span>
-      <ModelSelector
-        models={models}
-        selectedModel={selectedModel}
-        onModelChange={onModelChange}
-        disabled={disabled}
-      />
-      <div className="ml-auto flex items-center gap-2">
-        <EncryptionStatusBadge />
-        <Link href="/settings/encryption">
-          <Button variant="ghost" size="icon" className="h-8 w-8">
-            <Settings className="h-4 w-4" />
-          </Button>
-        </Link>
-      </div>
-    </div>
-  );
-}
 
 // Convert ChatMessage to legacy Message format for MessageList
 interface Message {
@@ -180,11 +152,13 @@ export function ChatWindow(): React.ReactElement {
     }
   }, [encryptedChat, selectedModel, isEncryptionReady]);
 
-  // Convert ChatMessage[] to Message[] for MessageList
+  // Convert ChatMessage to Message[] for MessageList
   const messages: Message[] = encryptedChat.messages.map((msg) => ({
     id: msg.id,
     role: msg.role,
     content: msg.content,
+    thinking: msg.thinking,
+    model: msg.model,
   }));
 
   // Show loading state only during initial encryption status fetch
@@ -203,12 +177,16 @@ export function ChatWindow(): React.ReactElement {
   if (!encryption.state.isSetup) {
     return (
       <div className="flex flex-col h-full">
-        <ModelHeader
-          models={models}
-          selectedModel={selectedModel}
-          onModelChange={setSelectedModel}
-          disabled={true}
-        />
+        <div className="absolute top-4 right-4 z-20">
+          <div className="flex items-center gap-2">
+            <EncryptionStatusBadge />
+            <Link href="/settings/encryption">
+              <Button variant="ghost" size="icon" className="h-8 w-8 text-white/50 hover:text-white hover:bg-white/10">
+                <Settings className="h-4 w-4" />
+              </Button>
+            </Link>
+          </div>
+        </div>
         <div className="flex-1 flex flex-col items-center justify-center p-4">
           <SetupEncryptionPrompt />
         </div>
@@ -220,12 +198,16 @@ export function ChatWindow(): React.ReactElement {
   if (!encryption.state.isUnlocked) {
     return (
       <div className="flex flex-col h-full">
-        <ModelHeader
-          models={models}
-          selectedModel={selectedModel}
-          onModelChange={setSelectedModel}
-          disabled={true}
-        />
+        <div className="absolute top-4 right-4 z-20">
+          <div className="flex items-center gap-2">
+            <EncryptionStatusBadge />
+            <Link href="/settings/encryption">
+              <Button variant="ghost" size="icon" className="h-8 w-8 text-white/50 hover:text-white hover:bg-white/10">
+                <Settings className="h-4 w-4" />
+              </Button>
+            </Link>
+          </div>
+        </div>
         <div className="flex-1 flex flex-col items-center justify-center p-4">
           <UnlockEncryptionPrompt />
         </div>
@@ -253,12 +235,16 @@ export function ChatWindow(): React.ReactElement {
         // Admin can set up org encryption
         return (
           <div className="flex flex-col h-full">
-            <ModelHeader
-              models={models}
-              selectedModel={selectedModel}
-              onModelChange={setSelectedModel}
-              disabled={true}
-            />
+            <div className="absolute top-4 right-4 z-20">
+              <div className="flex items-center gap-2">
+                <EncryptionStatusBadge />
+                <Link href="/settings/encryption">
+                  <Button variant="ghost" size="icon" className="h-8 w-8 text-white/50 hover:text-white hover:bg-white/10">
+                    <Settings className="h-4 w-4" />
+                  </Button>
+                </Link>
+              </div>
+            </div>
             <div className="flex-1 flex flex-col items-center justify-center p-4">
               <OrgEncryptionSetupPrompt orgId={orgId} onSuccess={orgEncryption.refetch} />
             </div>
@@ -268,12 +254,16 @@ export function ChatWindow(): React.ReactElement {
         // Member must wait for admin to set up encryption
         return (
           <div className="flex flex-col h-full">
-            <ModelHeader
-              models={models}
-              selectedModel={selectedModel}
-              onModelChange={setSelectedModel}
-              disabled={true}
-            />
+            <div className="absolute top-4 right-4 z-20">
+              <div className="flex items-center gap-2">
+                <EncryptionStatusBadge />
+                <Link href="/settings/encryption">
+                  <Button variant="ghost" size="icon" className="h-8 w-8 text-white/50 hover:text-white hover:bg-white/10">
+                    <Settings className="h-4 w-4" />
+                  </Button>
+                </Link>
+              </div>
+            </div>
             <div className="flex-1 flex flex-col items-center justify-center p-4">
               <AwaitingOrgEncryption />
             </div>
@@ -286,12 +276,16 @@ export function ChatWindow(): React.ReactElement {
     if (!orgEncryption.userHasOrgKey) {
       return (
         <div className="flex flex-col h-full">
-          <ModelHeader
-            models={models}
-            selectedModel={selectedModel}
-            onModelChange={setSelectedModel}
-            disabled={true}
-          />
+          <div className="absolute top-4 right-4 z-20">
+            <div className="flex items-center gap-2">
+              <EncryptionStatusBadge />
+              <Link href="/settings/encryption">
+                <Button variant="ghost" size="icon" className="h-8 w-8 text-white/50 hover:text-white hover:bg-white/10">
+                  <Settings className="h-4 w-4" />
+                </Button>
+              </Link>
+            </div>
+          </div>
           <div className="flex-1 flex flex-col items-center justify-center p-4">
             <AwaitingOrgKeyDistribution />
           </div>
@@ -315,51 +309,73 @@ export function ChatWindow(): React.ReactElement {
   // Show error message if there's an encryption error
   if (encryptedChat.error) {
     return (
-      <div className="flex flex-col h-full">
-        <ModelHeader
-          models={models}
-          selectedModel={selectedModel}
-          onModelChange={setSelectedModel}
-          disabled={isTyping}
-        />
+      <div className="flex flex-col h-full bg-black/20">
+        <div className="absolute top-4 right-4 z-20">
+          <div className="flex items-center gap-2">
+            <EncryptionStatusBadge />
+            <Link href="/settings/encryption">
+              <Button variant="ghost" size="icon" className="h-8 w-8 text-white/50 hover:text-white hover:bg-white/10">
+                <Settings className="h-4 w-4" />
+              </Button>
+            </Link>
+          </div>
+        </div>
         <div className="flex-1 flex flex-col">
           {messages.length > 0 && (
             <MessageList messages={messages} isTyping={isTyping} />
           )}
           <div
-            className="p-4 m-4 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 rounded-lg"
+            className="p-4 m-4 bg-red-900/20 text-red-300 rounded-lg"
             data-testid="encryption-error"
           >
             <p className="font-medium">Encryption Error</p>
             <p className="text-sm">{encryptedChat.error}</p>
           </div>
-          <ChatInput onSend={handleSend} disabled={isTyping} />
+          <ChatInput 
+            onSend={handleSend} 
+            disabled={isTyping} 
+            models={models}
+            selectedModel={selectedModel}
+            onModelChange={setSelectedModel}
+          />
         </div>
       </div>
     );
   }
 
   // Initial state - show welcome screen
+  // Initial state - show welcome screen
   if (isInitialState) {
     return (
-      <div className="flex flex-col h-full">
-        <ModelHeader
-          models={models}
-          selectedModel={selectedModel}
-          onModelChange={setSelectedModel}
-          disabled={isTyping}
-        />
+      <div className="flex flex-col h-full bg-black/20">
+        <div className="absolute top-4 right-4 z-20">
+            <div className="flex items-center gap-2">
+                <EncryptionStatusBadge />
+                <Link href="/settings/encryption">
+                <Button variant="ghost" size="icon" className="h-8 w-8 text-white/50 hover:text-white hover:bg-white/10">
+                    <Settings className="h-4 w-4" />
+                </Button>
+                </Link>
+            </div>
+        </div>
 
         <div className="flex-1 flex flex-col items-center justify-center p-4">
           <div className="text-center mb-8">
-            <h1 className="text-3xl font-bold mb-2">Isol8</h1>
-            <p className="text-muted-foreground">
-              Start a conversation with any model
+            <h1 className="text-4xl font-bold mb-3 text-white tracking-tight font-host">Isol8</h1>
+            <p className="text-white/40 text-lg font-light">
+              Secure, encrypted conversations
             </p>
           </div>
 
           <div className="w-full max-w-2xl">
-            <ChatInput onSend={handleSend} disabled={isTyping} centered />
+            <ChatInput 
+                onSend={handleSend} 
+                disabled={isTyping} 
+                centered 
+                models={models}
+                selectedModel={selectedModel}
+                onModelChange={setSelectedModel}
+            />
           </div>
         </div>
       </div>
@@ -368,15 +384,25 @@ export function ChatWindow(): React.ReactElement {
 
   // Normal chat state
   return (
-    <div className="flex flex-col h-full">
-      <ModelHeader
+    <div className="flex flex-col h-full bg-black/20">
+      <div className="absolute top-4 right-4 z-20">
+        <div className="flex items-center gap-2">
+          <EncryptionStatusBadge />
+          <Link href="/settings/encryption">
+            <Button variant="ghost" size="icon" className="h-8 w-8 text-white/50 hover:text-white hover:bg-white/10">
+              <Settings className="h-4 w-4" />
+            </Button>
+          </Link>
+        </div>
+      </div>
+      <MessageList messages={messages} isTyping={isTyping} />
+      <ChatInput 
+        onSend={handleSend} 
+        disabled={isTyping} 
         models={models}
         selectedModel={selectedModel}
         onModelChange={setSelectedModel}
-        disabled={isTyping}
       />
-      <MessageList messages={messages} isTyping={isTyping} />
-      <ChatInput onSend={handleSend} disabled={isTyping} />
     </div>
   );
 }

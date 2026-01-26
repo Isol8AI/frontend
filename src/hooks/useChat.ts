@@ -41,6 +41,10 @@ export interface ChatMessage {
   encryptedPayload?: SerializedEncryptedPayload;
   /** Whether this message is still streaming */
   isStreaming?: boolean;
+  /** Encrypted thinking content (reasoning chain) */
+  thinking?: string;
+  /** Model used for generation */
+  model?: string;
 }
 
 export interface UseChatOptions {
@@ -95,6 +99,11 @@ interface SSEEncryptedChunkData {
   encrypted_content: SerializedEncryptedPayload;
 }
 
+interface SSEThinkingChunkData {
+  type: 'thinking';
+  encrypted_content: SerializedEncryptedPayload;
+}
+
 interface SSEDoneData {
   type: 'done';
   stored_user_message?: SerializedEncryptedPayload;
@@ -124,6 +133,7 @@ interface SSEExtractedFactsData {
 type SSEData =
   | SSESessionData
   | SSEEncryptedChunkData
+  | SSEThinkingChunkData
   | SSEDoneData
   | SSEStoredData
   | SSEExtractedFactsData
@@ -135,6 +145,8 @@ function isValidSSEData(data: unknown): data is SSEData {
 
   if (obj.type === 'session' && typeof obj.session_id === 'string') return true;
   if (obj.type === 'encrypted_chunk' && typeof obj.encrypted_content === 'object')
+    return true;
+  if (obj.type === 'thinking' && typeof obj.encrypted_content === 'object')
     return true;
   if (obj.type === 'done') return true;
   if (obj.type === 'stored') return true;
@@ -306,6 +318,7 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
         id: assistantMsgId,
         role: 'assistant',
         content: '',
+        model: model, // Store the model used
         isStreaming: true,
       };
 
@@ -323,24 +336,10 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
         }
 
         // Step 1: Generate ephemeral transport keypair
-        console.log('\n📤 STEP 1: Generate Ephemeral Transport Keypair');
-        console.log('-'.repeat(60));
         const transportKeypair = encryption.generateTransportKeypair();
-        console.log('Transport Public Key (full):', transportKeypair.publicKey);
-        console.log('Transport Private Key (full - ephemeral, safe to log):', transportKeypair.privateKey);
 
         // Step 2: Encrypt message to enclave
-        console.log('\n📤 STEP 2: Encrypt Message to Enclave');
-        console.log('-'.repeat(60));
-        console.log('Plaintext Message:', content);
-        console.log('Enclave Public Key (full):', encryption.state.enclavePublicKey);
         const encryptedMessage = encryption.encryptMessage(content);
-        console.log('Encrypted Payload (full):');
-        console.log('  ephemeral_public_key:', encryptedMessage.ephemeral_public_key);
-        console.log('  iv:', encryptedMessage.iv);
-        console.log('  ciphertext:', encryptedMessage.ciphertext);
-        console.log('  auth_tag:', encryptedMessage.auth_tag);
-        console.log('  hkdf_salt:', encryptedMessage.hkdf_salt);
 
         // Prepare encrypted history (messages that have encrypted payloads)
         const historyMessages = messages.filter((m) => m.encryptedPayload);
@@ -404,18 +403,6 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
         }
 
         // Step 3: Send request to backend
-        console.log('\n📤 STEP 3: Send Encrypted Request to Backend');
-        console.log('-'.repeat(60));
-        console.log('Endpoint: POST /chat/encrypted/stream');
-        console.log('Request Body:');
-        console.log('  session_id:', sessionId);
-        console.log('  model:', model);
-        console.log('  client_transport_public_key:', transportKeypair.publicKey.substring(0, 32) + '...');
-        console.log('  encrypted_message: [encrypted payload above]');
-        console.log('  encrypted_history:', encryptedHistory.length, 'messages');
-        console.log('  encrypted_memories:', transportMemories.length, 'memories (for future context injection)');
-        console.log('  facts_context:', factsContext ? 'included' : 'none');
-
         const res = await fetch(`${BACKEND_URL}/chat/encrypted/stream`, {
           method: 'POST',
           headers: {
@@ -444,9 +431,6 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
           throw new Error(errorData.detail || 'Failed to send message');
         }
 
-        console.log('\n📥 STEP 4: Receive SSE Stream from Backend');
-        console.log('-'.repeat(60));
-
         const reader = res.body?.getReader();
         if (!reader) {
           throw new Error('No response body');
@@ -456,111 +440,128 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
         let fullContent = '';
         let storedUserPayload: SerializedEncryptedPayload | undefined;
         let storedAssistantPayload: SerializedEncryptedPayload | undefined;
-        let chunkCount = 0;
 
-        try {
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
+          const lastUpdateRef = { current: Date.now() };
+          
+          try {
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
 
-            const chunk = decoder.decode(value);
-            const lines = chunk.split('\n');
+              const chunk = decoder.decode(value);
+              const lines = chunk.split('\n');
 
-            for (const line of lines) {
-              if (!line.startsWith('data: ')) continue;
+              for (const line of lines) {
+                if (!line.startsWith('data: ')) continue;
 
-              try {
-                const data: unknown = JSON.parse(line.slice(6));
+                try {
+                  const data: unknown = JSON.parse(line.slice(6));
 
-                if (!isValidSSEData(data)) {
-                  console.warn('Invalid SSE data:', data);
-                  continue;
-                }
+                  if (!isValidSSEData(data)) continue;
 
-                if (data.type === 'session') {
-                  const newSessionId = data.session_id;
-                  console.log('SSE Event [session]:', newSessionId);
-                  setSessionId(newSessionId);
-                  onSessionChange?.(newSessionId);
-                  window.dispatchEvent(new CustomEvent('sessionUpdated'));
-                } else if (data.type === 'encrypted_chunk') {
-                  chunkCount++;
-                  // Decrypt the chunk
-                  console.log(`\n📥 STEP 5.${chunkCount}: Decrypt Chunk`);
-                  console.log('-'.repeat(60));
-                  console.log('Encrypted chunk received:');
-                  console.log('  ephemeral_public_key:', data.encrypted_content.ephemeral_public_key.substring(0, 32) + '...');
-                  console.log('  ciphertext:', data.encrypted_content.ciphertext.substring(0, 32) + '...');
+                  if (data.type === 'session') {
+                    setSessionId(data.session_id);
+                    onSessionChange?.(data.session_id);
+                    window.dispatchEvent(new CustomEvent('sessionUpdated'));
+                  } else if (data.type === 'encrypted_chunk') {
+                    // Decrypt content chunk
+                    const decryptedChunk = encryption.decryptTransportResponse(
+                      data.encrypted_content
+                    );
+                    fullContent += decryptedChunk;
+                  } else if (data.type === 'thinking') {
+                    // Decrypt thinking chunk
+                    const decryptedThinking = encryption.decryptTransportResponse(
+                      data.encrypted_content
+                    );
+                    
+                    // Update assistant message with thinking state
+                    // We update immediately for thinking to show liveness, or throttle if needed
+                    setMessages((prev) =>
+                      prev.map((msg) =>
+                        msg.id === assistantMsgId
+                          ? { ...msg, thinking: (msg.thinking || '') + decryptedThinking }
+                          : msg
+                      )
+                    );
+                  } else if (data.type === 'stored') {
+                    // This event is for logging purposes, no state change needed here
+                    console.log('\n💾 SSE Event [stored]');
+                    console.log('  model_used:', data.model_used);
+                    console.log('  input_tokens:', data.input_tokens);
+                    console.log('  output_tokens:', data.output_tokens);
+                  } else if (data.type === 'extracted_facts') {
+                    console.log('\n📝 SSE Event [extracted_facts]');
+                    console.log(`  Received ${data.facts.length} encrypted facts from enclave`);
 
-                  const decryptedChunk = encryption.decryptTransportResponse(
-                    data.encrypted_content
-                  );
-                  console.log('Decrypted chunk:', decryptedChunk);
-                  fullContent += decryptedChunk;
+                    // Decrypt and store each fact
+                    for (const encryptedFact of data.facts) {
+                      try {
+                        // Decrypt the fact payload
+                        const factJson = encryption.decryptTransportResponse(
+                          encryptedFact.encrypted_payload
+                        );
+                        const factData = JSON.parse(factJson);
+                        console.log(`  - Decrypted fact: ${factData.subject} ${factData.predicate} ${factData.object}`);
 
-                  // Update the assistant message
-                  setMessages((prev) =>
-                    prev.map((msg) =>
-                      msg.id === assistantMsgId
-                        ? { ...msg, content: fullContent }
-                        : msg
-                    )
-                  );
-                } else if (data.type === 'stored') {
-                  console.log('\n💾 SSE Event [stored]');
-                  console.log('  model_used:', data.model_used);
-                  console.log('  input_tokens:', data.input_tokens);
-                  console.log('  output_tokens:', data.output_tokens);
-                } else if (data.type === 'extracted_facts') {
-                  console.log('\n📝 SSE Event [extracted_facts]');
-                  console.log(`  Received ${data.facts.length} encrypted facts from enclave`);
-
-                  // Decrypt and store each fact
-                  for (const encryptedFact of data.facts) {
-                    try {
-                      // Decrypt the fact payload
-                      const factJson = encryption.decryptTransportResponse(
-                        encryptedFact.encrypted_payload
-                      );
-                      const factData = JSON.parse(factJson);
-                      console.log(`  - Decrypted fact: ${factData.subject} ${factData.predicate} ${factData.object}`);
-
-                      // Store the fact using temporal facts system
-                      await temporalFacts.addFact({
-                        subject: factData.subject,
-                        predicate: factData.predicate,
-                        object: factData.object,
-                        confidence: factData.confidence,
-                        type: factData.type,
-                        source: factData.source,
-                        entities: factData.entities,
-                        sessionId: sessionId ?? undefined,
-                      });
-                    } catch (factErr) {
-                      console.warn('  Failed to process fact:', factErr);
+                        // Store the fact using temporal facts system
+                        await temporalFacts.addFact({
+                          subject: factData.subject,
+                          predicate: factData.predicate,
+                          object: factData.object,
+                          confidence: factData.confidence,
+                          type: factData.type,
+                          source: factData.source,
+                          entities: factData.entities,
+                          sessionId: sessionId ?? undefined,
+                        });
+                      } catch (factErr) {
+                        console.warn('  Failed to process fact:', factErr);
+                      }
                     }
+                    console.log(`  ✓ Stored ${data.facts.length} facts from enclave`);
+                  } else if (data.type === 'done') {
+                    storedUserPayload = data.stored_user_message;
+                    storedAssistantPayload = data.stored_assistant_message;
+                  } else if (data.type === 'error') {
+                    throw new Error(data.message);
                   }
-                  console.log(`  ✓ Stored ${data.facts.length} facts from enclave`);
-                } else if (data.type === 'done') {
-                  console.log('\n✅ SSE Event [done]');
-                  storedUserPayload = data.stored_user_message;
-                  storedAssistantPayload = data.stored_assistant_message;
-                } else if (data.type === 'error') {
-                  throw new Error(data.message);
+                  
+                  // Throttle updates for main content (every 50ms)
+                  const now = Date.now();
+                  if (now - lastUpdateRef.current > 50) {
+                     setMessages((prev) =>
+                      prev.map((msg) =>
+                        msg.id === assistantMsgId
+                          ? { ...msg, content: fullContent }
+                          : msg
+                      )
+                    );
+                    lastUpdateRef.current = now;
+                  }
+
+                } catch (parseError) {
+                  if (parseError instanceof SyntaxError) continue;
+                  throw parseError;
                 }
-              } catch (parseError) {
-                if (parseError instanceof SyntaxError) continue;
-                throw parseError;
               }
             }
+            
+            // Final update to ensure complete content
+            setMessages((prev) =>
+              prev.map((msg) =>
+                msg.id === assistantMsgId
+                  ? { ...msg, content: fullContent }
+                  : msg
+              )
+            );
+
+          } finally {
+            reader.releaseLock();
           }
-        } finally {
-          reader.releaseLock();
-        }
 
         console.log('\n📋 FINAL RESULT');
         console.log('-'.repeat(60));
-        console.log('Total chunks received:', chunkCount);
         console.log('Full decrypted response:', fullContent);
         console.log('='.repeat(80) + '\n');
 
@@ -581,25 +582,15 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
           })
         );
 
-        // Step 6: Auto-trigger fact extraction (async, non-blocking)
-        if (enableFacts && fullContent.length > 0) {
-          console.log('\n🧠 STEP 6: Auto-Extract Facts');
-          console.log('-'.repeat(60));
-          // Run extraction in background (don't await)
-          temporalFacts.extractAndStoreFacts(
-            content,           // User message
-            fullContent,       // Assistant response
-            sessionId ?? undefined
-          ).then((facts) => {
-            console.log(`[AutoExtract] Extracted and stored ${facts.length} facts`);
-            for (const fact of facts) {
-              console.log(`  - [${fact.type}] ${fact.subject} ${fact.predicate} ${fact.object}`);
-            }
-          }).catch((err) => {
-            // Extraction errors are non-fatal
-            console.warn('[AutoExtract] Failed to extract facts:', err);
-          });
-        }
+        // NOTE: Fact extraction is now handled entirely by the backend enclave.
+        // The backend sends extracted facts via SSE 'extracted_facts' events (handled above at lines 490-519).
+        // This avoids downloading TinyLlama-1.1B (~500MB) in the browser, which was causing:
+        // - Unnecessary bandwidth usage
+        // - Browser performance issues
+        // - Duplicate fact extraction (backend already does pattern-based extraction)
+        //
+        // The backend's pattern-based extraction is faster and doesn't require a model download.
+        // Facts are stored via temporalFacts.addFact() when received from the SSE stream.
       } catch (err) {
         // Don't show error for aborted requests
         if (err instanceof Error && err.name === 'AbortError') {

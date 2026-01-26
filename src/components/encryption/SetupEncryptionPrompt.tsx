@@ -229,18 +229,22 @@ export function SetupEncryptionPrompt({ onComplete }: Props) {
 
   return (
     <div
-      className="w-full max-w-md mx-auto p-6 bg-card rounded-lg border shadow-sm"
+      className="w-full max-w-md mx-auto relative group"
       data-testid="setup-encryption-prompt"
     >
-      <div className="flex items-center gap-2 mb-4">
-        <Key className="h-6 w-6 text-primary" />
-        <h2 className="text-xl font-semibold">Set Up Encryption</h2>
-      </div>
+      <div className="absolute -inset-1 bg-gradient-to-r from-blue-500/20 to-purple-500/20 rounded-2xl blur opacity-75 group-hover:opacity-100 transition duration-1000" />
+      <div className="relative p-8 bg-zinc-900/90 backdrop-blur-xl rounded-2xl border border-white/10 shadow-2xl text-white">
+        <div className="mb-8 text-center">
+             <div className="h-12 w-12 bg-white/5 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-white/10">
+                 <Key className="h-6 w-6 text-white" />
+             </div>
+             <h2 className="text-2xl font-bold text-white tracking-tight">Set Up Encryption</h2>
+             <p className="text-sm text-white/40 mt-2">
+                Create a passcode to secure your private research enclave.
+              </p>
+        </div>
 
-      <p className="text-sm text-muted-foreground mb-6">
-        Create a 6-digit passcode to protect your encryption keys. You&apos;ll
-        use this to unlock your messages.
-      </p>
+
 
       <div className="space-y-4">
         <div>
@@ -256,7 +260,7 @@ export function SetupEncryptionPrompt({ onComplete }: Props) {
             value={passcode}
             onChange={handlePasscodeChange}
             data-testid="passcode-input"
-            className="text-center text-lg tracking-[0.5em]"
+            className="text-center text-lg tracking-[0.5em] bg-black/50 border-white/10 text-white placeholder:text-white/20"
           />
         </div>
 
@@ -273,7 +277,7 @@ export function SetupEncryptionPrompt({ onComplete }: Props) {
             value={confirmPasscode}
             onChange={handleConfirmChange}
             data-testid="passcode-confirm-input"
-            className="text-center text-lg tracking-[0.5em]"
+            className="text-center text-lg tracking-[0.5em] bg-black/50 border-white/10 text-white placeholder:text-white/20"
           />
         </div>
 
@@ -292,7 +296,7 @@ export function SetupEncryptionPrompt({ onComplete }: Props) {
         )}
 
         <Button
-          className="w-full gap-2"
+          className="w-full gap-2 bg-white text-black hover:bg-white/90 font-medium"
           disabled={isLoading || passcode.length < 6 || confirmPasscode.length < 6}
           onClick={handleSetupEncryption}
           data-testid="setup-encryption-button"
@@ -310,6 +314,7 @@ export function SetupEncryptionPrompt({ onComplete }: Props) {
           )}
         </Button>
       </div>
+    </div>
     </div>
   );
 }

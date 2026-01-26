@@ -121,46 +121,57 @@ export function ChatLayout({ children }: ChatLayoutProps): React.ReactElement {
   }
 
   return (
-    <div className="flex h-screen bg-background overflow-hidden">
-      <div className="w-64 hidden md:flex flex-col border-r">
-        <div className="p-3 border-b">
-          <OrganizationSwitcher />
-        </div>
+    <div className="flex h-screen bg-black text-white overflow-hidden relative selection:bg-white/20">
+      {/* Global Grain Overlay */}
+      <div className="fixed inset-0 z-0 pointer-events-none bg-noise opacity-[0.03]" />
 
-        <div className="px-3 py-2 text-xs text-muted-foreground border-b">
-          {isPersonalContext ? "Personal Chats" : "Organization Chats"}
-        </div>
-
-        {!isPersonalContext && isOrgAdmin && orgId && (
-          <div className="px-3 py-2 border-b">
-            <Link href={`/org/${orgId}/settings/encryption`}>
-              <Button variant="ghost" size="sm" className="w-full justify-start gap-2">
-                <Settings className="h-4 w-4" />
-                Org Settings
-              </Button>
-            </Link>
+      <div className="relative z-10 flex w-full h-full">
+        <div className="w-64 hidden md:flex flex-col border-r border-white/10 bg-black/50 backdrop-blur-xl">
+          <div className="p-3 border-b border-white/10">
+            <OrganizationSwitcher />
           </div>
-        )}
 
-        <Sidebar
-          className="flex-1"
-          sessions={sessions}
-          currentSessionId={currentSessionId}
-          isLoading={isLoadingSessions}
-          onNewChat={handleNewChat}
-          onSelectSession={handleSelectSession}
-        />
-      </div>
+          <div className="px-3 py-2 text-xs font-medium text-white/40 uppercase tracking-wider">
+            {isPersonalContext ? "Personal Chats" : "Organization Chats"}
+          </div>
 
-      <main className="flex-1 flex flex-col relative">
-        <header className="h-14 border-b flex items-center justify-end px-4">
-          <UserButton />
-        </header>
+          {!isPersonalContext && isOrgAdmin && orgId && (
+            <div className="px-3 py-2">
+              <Link href={`/org/${orgId}/settings/encryption`}>
+                <Button variant="ghost" size="sm" className="w-full justify-start gap-2 text-white/70 hover:text-white hover:bg-white/10">
+                  <Settings className="h-4 w-4" />
+                  Org Settings
+                </Button>
+              </Link>
+            </div>
+          )}
 
-        <div className="flex-1 overflow-hidden">
-          {children}
+          <Sidebar
+            className="flex-1"
+            sessions={sessions}
+            currentSessionId={currentSessionId}
+            isLoading={isLoadingSessions}
+            onNewChat={handleNewChat}
+            onSelectSession={handleSelectSession}
+          />
         </div>
-      </main>
+
+        <main className="flex-1 flex flex-col relative bg-black/20">
+          <header className="h-14 border-b border-white/10 flex items-center justify-end px-4 backdrop-blur-sm bg-black/20 absolute top-0 right-0 left-0 z-20">
+            <UserButton 
+              appearance={{
+                elements: {
+                  avatarBox: "h-8 w-8"
+                }
+              }}
+            />
+          </header>
+
+          <div className="flex-1 overflow-hidden pt-14">
+            {children}
+          </div>
+        </main>
+      </div>
     </div>
   );
 }
