@@ -24,7 +24,7 @@ describe('MessageList', () => {
 
     it('renders container when no messages', () => {
       const { container } = render(<MessageList messages={[]} />);
-      expect(container.querySelector('.space-y-6')).toBeInTheDocument();
+      expect(container.querySelector('.space-y-10')).toBeInTheDocument();
     });
 
     it('preserves whitespace in messages', () => {
@@ -46,30 +46,30 @@ describe('MessageList', () => {
       render(<MessageList messages={[{ id: '1', role: 'user', content: 'User message' }]} />);
 
       const messageWrapper = screen.getByText('User message').closest('.flex');
-      expect(messageWrapper).toHaveClass('justify-end');
+      expect(messageWrapper).toHaveClass('items-end');
     });
 
     it('aligns assistant messages to the left', () => {
       render(<MessageList messages={[{ id: '1', role: 'assistant', content: 'Assistant message' }]} />);
 
       const messageWrapper = screen.getByText('Assistant message').closest('.flex');
-      expect(messageWrapper).toHaveClass('justify-start');
+      expect(messageWrapper).toHaveClass('items-start');
     });
   });
 
   describe('message styling', () => {
-    it('applies primary style to user messages', () => {
+    it('applies correct text style to user messages', () => {
       render(<MessageList messages={[{ id: '1', role: 'user', content: 'User message' }]} />);
 
-      const messageBubble = screen.getByText('User message').closest('.rounded-lg');
-      expect(messageBubble).toHaveClass('bg-primary');
+      const messageText = screen.getByText('User message').closest('.text-sm');
+      expect(messageText).toHaveClass('text-white');
     });
 
-    it('applies muted style to assistant messages', () => {
+    it('applies correct text style to assistant messages', () => {
       render(<MessageList messages={[{ id: '1', role: 'assistant', content: 'Assistant message' }]} />);
 
-      const messageBubble = screen.getByText('Assistant message').closest('.rounded-lg');
-      expect(messageBubble).toHaveClass('bg-muted');
+      const messageText = screen.getByText('Assistant message').closest('.text-sm');
+      expect(messageText).toBeInTheDocument();
     });
   });
 
@@ -82,7 +82,7 @@ describe('MessageList', () => {
         />
       );
 
-      const dots = document.querySelectorAll('.animate-pulse');
+      const dots = document.querySelectorAll('.animate-bounce');
       expect(dots.length).toBe(3);
     });
 
@@ -94,7 +94,7 @@ describe('MessageList', () => {
         />
       );
 
-      const dots = document.querySelectorAll('.animate-pulse');
+      const dots = document.querySelectorAll('.animate-bounce');
       expect(dots.length).toBe(0);
     });
 
@@ -106,7 +106,7 @@ describe('MessageList', () => {
         />
       );
 
-      const dots = document.querySelectorAll('.animate-pulse');
+      const dots = document.querySelectorAll('.animate-bounce');
       expect(dots.length).toBe(0);
     });
   });

@@ -91,12 +91,13 @@ async function sendMessageAndWaitForResponse(page: Page, message: string): Promi
   // We wait for the message area to contain meaningful content
   await page.waitForFunction(
     () => {
-      // Find all message containers (assistant messages are on the left, bg-muted)
-      const messageContainers = document.querySelectorAll('.bg-muted .text-sm');
-      if (messageContainers.length === 0) return false;
+      // Find all assistant message containers (items-start class indicates assistant messages)
+      // The actual content is in a .whitespace-pre-wrap div inside
+      const assistantMessages = document.querySelectorAll('.items-start .whitespace-pre-wrap');
+      if (assistantMessages.length === 0) return false;
 
       // Get the last assistant message
-      const lastMessage = messageContainers[messageContainers.length - 1];
+      const lastMessage = assistantMessages[assistantMessages.length - 1];
       const text = lastMessage.textContent || '';
 
       // Check if it has real content (more than just dots or empty)
@@ -110,7 +111,7 @@ async function sendMessageAndWaitForResponse(page: Page, message: string): Promi
   await page.waitForTimeout(1000);
 
   // Get the last assistant message content
-  const messageContainers = page.locator('.bg-muted .text-sm');
+  const messageContainers = page.locator('.items-start .whitespace-pre-wrap');
   const count = await messageContainers.count();
 
   if (count > 0) {

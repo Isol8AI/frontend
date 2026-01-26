@@ -242,7 +242,8 @@ test.describe('Sessions', () => {
 
     await page.locator('text=First Chat').click();
 
-    await expect(page.locator('button:has-text("First Chat")')).toHaveClass(/secondary/);
-    await expect(page.locator('button:has-text("Second Chat")')).not.toHaveClass(/secondary/);
+    // Current session is highlighted with bg-white/10 class
+    await expect(page.locator('button:has-text("First Chat")')).toHaveClass(/bg-white\/10/);
+    await expect(page.locator('button:has-text("Second Chat")')).not.toHaveClass(/bg-white\/10/);
   });
 });

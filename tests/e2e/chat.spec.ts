@@ -211,7 +211,8 @@ test.describe('Chat', () => {
     const llamaOption = page.locator('text=Llama 3.3 70B');
     if (await llamaOption.isVisible({ timeout: 1000 }).catch(() => false)) {
       await llamaOption.click();
-      await expect(page.locator('button:has-text("Llama")')).toBeVisible();
+      // Use .first() to avoid strict mode violation (Llama appears in button trigger and dropdown)
+      await expect(page.locator('button:has-text("Llama")').first()).toBeVisible();
     }
   });
 

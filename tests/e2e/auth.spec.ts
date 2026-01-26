@@ -31,11 +31,13 @@ test.describe('Authenticated User', () => {
   });
 
   test('chat interface shows model selector', async ({ page }) => {
+    // Model selector is a button that shows the current model name (e.g., Qwen, Llama, etc.)
     const modelSelector = page
-      .getByRole('combobox')
-      .or(page.locator('[data-testid="model-selector"]'))
-      .or(page.locator('button:has-text("Qwen")'));
-    await expect(modelSelector).toBeVisible({ timeout: DEFAULT_TIMEOUT });
+      .locator('button:has-text("Qwen")')
+      .or(page.locator('button:has-text("Llama")'))
+      .or(page.locator('button:has-text("Gemma")'))
+      .or(page.locator('button:has-text("DeepSeek")'));
+    await expect(modelSelector.first()).toBeVisible({ timeout: DEFAULT_TIMEOUT });
   });
 
   test('chat interface shows encryption setup', async ({ page }) => {
