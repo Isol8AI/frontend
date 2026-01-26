@@ -1,6 +1,6 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
-import { ChevronDown, ChevronRight, Sparkles, Copy, RefreshCw, Share2, Bot } from "lucide-react";
+import { Copy, RefreshCw, Share2, Bot, ChevronDown, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface Message {
@@ -16,7 +16,30 @@ interface MessageListProps {
   isTyping?: boolean;
 }
 
-// ... ThinkingBlock ...
+function ThinkingBlock({ content }: { content: string }) {
+  const [isExpanded, setIsExpanded] = React.useState(false);
+
+  return (
+    <div className="mb-4 border border-white/10 rounded-lg overflow-hidden">
+      <button
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="w-full flex items-center gap-2 px-3 py-2 bg-white/5 hover:bg-white/10 transition-colors text-left"
+      >
+        {isExpanded ? (
+          <ChevronDown className="h-4 w-4 text-white/60" />
+        ) : (
+          <ChevronRight className="h-4 w-4 text-white/60" />
+        )}
+        <span className="text-sm text-white/60 italic">Thinking...</span>
+      </button>
+      {isExpanded && (
+        <div className="px-3 py-2 text-sm text-white/50 whitespace-pre-wrap border-t border-white/10">
+          {content}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function MessageToolbar({ modelName }: { modelName?: string }) {
     return (
