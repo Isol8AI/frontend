@@ -12,13 +12,6 @@ const mockMemory: DecryptedMemory = {
   salience: 0.8,
   created_at: '2024-01-15T10:30:00Z',
   is_org_memory: false,
-  encryptedPayload: {
-    ephemeral_public_key: 'test-key',
-    iv: 'test-iv',
-    ciphertext: 'test-ciphertext',
-    auth_tag: 'test-tag',
-    hkdf_salt: 'test-salt',
-  },
 };
 
 describe('MemoryCard', () => {
