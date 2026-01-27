@@ -3,37 +3,33 @@
  *
  * Allows users to:
  * - View all their memories (facts the AI remembers)
- * - View client-side temporal facts
  * - Filter between personal and organization memories
  * - Delete individual memories
  * - Delete all memories
  *
  * Requires encryption to be set up and unlocked to view memory contents.
+ *
+ * Note: Facts tab removed during migration to mem0.
  */
 
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
 import { useOrganization } from '@clerk/nextjs';
 import { useEncryption } from '@/hooks/useEncryption';
 import { useOrgEncryptionStatus } from '@/hooks/useOrgEncryptionStatus';
 import { SetupEncryptionPrompt } from '@/components/encryption/SetupEncryptionPrompt';
 import { UnlockEncryptionPrompt } from '@/components/encryption/UnlockEncryptionPrompt';
-import { MemoryList, FactList } from '@/components/memories';
+import { MemoryList } from '@/components/memories';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Brain, Loader2, Lock, AlertCircle, Lightbulb } from 'lucide-react';
+import { ArrowLeft, Brain, Loader2, Lock, AlertCircle } from 'lucide-react';
 import Link from 'next/link';
-
-type TabType = 'memories' | 'facts';
 
 export default function MemoriesSettingsPage() {
   const encryption = useEncryption();
   const { organization } = useOrganization();
   const orgId = organization?.id || null;
   const isOrgContext = !!orgId;
-
-  // Tab state - facts are personal only, memories can be org
-  const [activeTab, setActiveTab] = useState<TabType>('memories');
 
   // Get org encryption status if in org context
   const orgEncryptionStatus = useOrgEncryptionStatus(orgId);
@@ -138,104 +134,25 @@ export default function MemoriesSettingsPage() {
 
       {/* Content */}
       <div className="max-w-3xl mx-auto px-4 py-8">
-        {/* Tab Navigation */}
-        <div className="flex gap-1 p-1 bg-muted rounded-lg mb-6">
-          <TabButton
-            active={activeTab === 'memories'}
-            onClick={() => setActiveTab('memories')}
-            icon={<Brain className="h-4 w-4" />}
-          >
-            Memories
-          </TabButton>
-          <TabButton
-            active={activeTab === 'facts'}
-            onClick={() => setActiveTab('facts')}
-            icon={<Lightbulb className="h-4 w-4" />}
-          >
-            Facts
-          </TabButton>
-        </div>
-
         {/* Info section */}
         <div className="mb-6 p-4 bg-muted/50 rounded-lg">
-          <h2 className="text-sm font-medium mb-1">
-            {activeTab === 'memories' ? 'About Memories' : 'About Facts'}
-          </h2>
+          <h2 className="text-sm font-medium mb-1">About Memories</h2>
           <p className="text-sm text-muted-foreground">
-            {activeTab === 'memories' ? (
+            Memories are facts and preferences the AI learns from your conversations.
+            They are stored securely on the server (encrypted) and help provide more
+            personalized responses.
+            {isOrgContext && (
               <>
-                Memories are facts and preferences the AI learns from your conversations.
-                They are stored securely on the server (encrypted) and help provide more
-                personalized responses.
-                {isOrgContext && (
-                  <>
-                    {' '}In organization mode, you can see both your personal memories and
-                    shared organization memories.
-                  </>
-                )}
-              </>
-            ) : (
-              <>
-                Facts are temporal knowledge extracted from your conversations using AI.
-                They are stored <strong>locally in your browser</strong> and never sent to
-                the server. Facts can become outdated and are automatically invalidated
-                when new information is learned.
+                {' '}In organization mode, you can see both your personal memories and
+                shared organization memories.
               </>
             )}
           </p>
         </div>
 
-        {/* Show blocking content or content based on tab */}
-        {activeTab === 'memories' && (
-          blockingContent || (canShowMemories && <MemoryList orgId={orgId} />)
-        )}
-
-        {activeTab === 'facts' && (
-          // Facts only require personal encryption (stored locally)
-          !encryption.state.isSetup ? (
-            <div className="max-w-md mx-auto">
-              <SetupEncryptionPrompt onComplete={() => {}} />
-            </div>
-          ) : !encryption.state.isUnlocked ? (
-            <div className="max-w-md mx-auto">
-              <UnlockEncryptionPrompt onUnlocked={() => {}} />
-            </div>
-          ) : (
-            <FactList />
-          )
-        )}
+        {/* Show blocking content or memory list */}
+        {blockingContent || (canShowMemories && <MemoryList orgId={orgId} />)}
       </div>
     </div>
-  );
-}
-
-/**
- * Tab button component.
- */
-function TabButton({
-  active,
-  onClick,
-  icon,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  icon: React.ReactNode;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`flex items-center gap-2 px-4 py-2 text-sm rounded transition-colors flex-1 justify-center ${
-        active
-          ? 'bg-background text-foreground shadow-sm'
-          : 'text-muted-foreground hover:text-foreground'
-      }`}
-      data-testid={`tab-${children?.toString().toLowerCase()}`}
-    >
-      {icon}
-      {children}
-    </button>
   );
 }

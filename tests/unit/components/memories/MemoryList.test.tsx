@@ -20,13 +20,6 @@ const mockMemories: DecryptedMemory[] = [
     salience: 0.8,
     created_at: '2024-01-15T10:30:00Z',
     is_org_memory: false,
-    encryptedPayload: {
-      ephemeral_public_key: 'key',
-      iv: 'iv',
-      ciphertext: 'cipher',
-      auth_tag: 'tag',
-      hkdf_salt: 'salt',
-    },
   },
   {
     id: 'mem-2',
@@ -37,13 +30,6 @@ const mockMemories: DecryptedMemory[] = [
     salience: 0.7,
     created_at: '2024-01-14T09:00:00Z',
     is_org_memory: true,
-    encryptedPayload: {
-      ephemeral_public_key: 'key2',
-      iv: 'iv2',
-      ciphertext: 'cipher2',
-      auth_tag: 'tag2',
-      hkdf_salt: 'salt2',
-    },
   },
 ];
 
