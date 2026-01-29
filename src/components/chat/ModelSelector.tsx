@@ -37,10 +37,23 @@ export function ModelSelector({
   const selectedModelName =
     models.find((m) => m.id === selectedModel)?.name || "Select Model";
 
-  // Mock categorization logic if not present
+  // Categorize models based on their ID or name
   const getCategory = (id: string, name: string) => {
-    if (id.includes('deepseek') || id.includes('reason')) return 'reasoning';
-    if (id.includes('code') || id.includes('coder')) return 'coding';
+    const idLower = id.toLowerCase();
+    const nameLower = name.toLowerCase();
+
+    // Reasoning models
+    if (idLower.includes('opus') || idLower.includes('deepseek') ||
+        idLower.includes('reason') || nameLower.includes('opus')) {
+      return 'reasoning';
+    }
+
+    // Coding models
+    if (idLower.includes('code') || idLower.includes('coder')) {
+      return 'coding';
+    }
+
+    // Default to chat (covers Claude Sonnet, Haiku, Llama, Mistral, Titan, etc.)
     return 'chat';
   };
 
@@ -142,7 +155,7 @@ export function ModelSelector({
         
         <div className="p-2 border-t border-white/10 bg-white/[0.02]">
           <div className="text-[10px] text-center text-white/30">
-            Powered by Nitro Enclaves
+            Powered by AWS Bedrock
           </div>
         </div>
       </PopoverContent>

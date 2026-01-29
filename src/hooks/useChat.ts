@@ -109,21 +109,12 @@ interface SSEStoredData {
   output_tokens: number;
 }
 
-interface SSEExtractedFactsData {
-  type: 'extracted_facts';
-  facts: Array<{
-    fact_id: string;
-    encrypted_payload: SerializedEncryptedPayload;
-  }>;
-}
-
 type SSEData =
   | SSESessionData
   | SSEEncryptedChunkData
   | SSEThinkingChunkData
   | SSEDoneData
   | SSEStoredData
-  | SSEExtractedFactsData
   | SSEErrorData;
 
 function isValidSSEData(data: unknown): data is SSEData {
@@ -137,7 +128,6 @@ function isValidSSEData(data: unknown): data is SSEData {
     return true;
   if (obj.type === 'done') return true;
   if (obj.type === 'stored') return true;
-  if (obj.type === 'extracted_facts' && Array.isArray(obj.facts)) return true;
   if (obj.type === 'error' && typeof obj.message === 'string') return true;
 
   return false;
@@ -419,9 +409,6 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
                     console.log('  model_used:', data.model_used);
                     console.log('  input_tokens:', data.input_tokens);
                     console.log('  output_tokens:', data.output_tokens);
-                  } else if (data.type === 'extracted_facts') {
-                    // Facts extraction disabled during migration to mem0
-                    console.log('[useChat] Ignoring extracted_facts event during migration');
                   } else if (data.type === 'done') {
                     storedUserPayload = data.stored_user_message;
                     storedAssistantPayload = data.stored_assistant_message;

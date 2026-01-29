@@ -12,21 +12,11 @@ const DEFAULT_TIMEOUT = 15000;
 /**
  * Set up common mocks for chat tests.
  * - Enables embedding test mode to avoid loading the heavy ML model
- * - Mocks memories search to return empty (realistic for new user)
  */
 async function setupChatTestMocks(page: Page): Promise<void> {
   // Enable embedding test mode to avoid loading the heavy ML model
   await page.addInitScript(() => {
     (window as unknown as { __EMBEDDINGS_TEST_MODE__: boolean }).__EMBEDDINGS_TEST_MODE__ = true;
-  });
-
-  // Mock memories search to return empty (user has no memories yet)
-  await page.route('**/api/v1/memories/search', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({ memories: [] }),
-    });
   });
 }
 
@@ -203,7 +193,8 @@ test.describe('Chat', () => {
     // Set up or unlock encryption (real backend)
     await ensureEncryptionReady(page);
 
-    const modelButton = page.locator('button:has-text("Qwen")').first();
+    // Model selector should show one of the available models (Claude, Llama, or Nova)
+    const modelButton = page.locator('button:has-text(/Claude|Llama|Nova/)').first();
     await expect(modelButton).toBeVisible();
     await modelButton.click();
 
