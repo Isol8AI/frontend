@@ -2,6 +2,7 @@ import * as React from "react";
 import { cn } from "@/lib/utils";
 import { Copy, RefreshCw, Share2, Bot, ChevronDown, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useScrollToBottom } from "@/hooks/useScrollToBottom";
 
 interface Message {
   id: string;
@@ -62,19 +63,13 @@ function MessageToolbar({ modelName }: { modelName?: string }) {
 }
 
 export function MessageList({ messages, isTyping }: MessageListProps) {
-  const scrollContainerRef = React.useRef<HTMLDivElement>(null);
-  const scrollRef = React.useRef<HTMLDivElement>(null);
-
-  React.useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollIntoView({ behavior: "smooth" });
-    }
-  }, [messages, messages.map(m => m.content).join(''), messages.map(m => m.thinking).join('')]);
+  const { containerRef, endRef } = useScrollToBottom();
 
   return (
     <div
-      ref={scrollContainerRef}
-      className="flex-1 overflow-y-auto p-4 md:px-8 custom-scrollbar"
+      ref={containerRef}
+      className="flex-1 min-h-0 overflow-y-auto p-4 md:px-8"
+      data-lenis-prevent
     >
       <div className="max-w-3xl mx-auto space-y-10 py-8">
         {messages.map((msg) => (
@@ -111,7 +106,7 @@ export function MessageList({ messages, isTyping }: MessageListProps) {
             </div>
           </div>
         ))}
-        <div ref={scrollRef} />
+        <div ref={endRef} />
       </div>
     </div>
   );

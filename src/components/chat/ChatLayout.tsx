@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useAuth, UserButton } from "@clerk/nextjs";
 import { Settings } from "lucide-react";
@@ -9,12 +9,8 @@ import { Sidebar } from "@/components/chat/Sidebar";
 import { OrganizationSwitcher } from "@/components/organization/OrganizationSwitcher";
 import { useOrgContext } from "@/components/providers/OrganizationProvider";
 import { useApi } from "@/lib/api";
+import { useSessions } from "@/hooks/useSessions";
 import { Button } from "@/components/ui/button";
-
-interface Session {
-  id: string;
-  name: string;
-}
 
 interface ChatLayoutProps {
   children: React.ReactNode;
@@ -32,13 +28,8 @@ export function ChatLayout({ children }: ChatLayoutProps): React.ReactElement {
   const { isSignedIn } = useAuth();
   const api = useApi();
   const { orgId, isPersonalContext, isOrgAdmin } = useOrgContext();
-  const [sessions, setSessions] = useState<Session[]>([]);
+  const { sessions, isLoading: isLoadingSessions, refresh: refreshSessions } = useSessions();
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
-  const [isLoadingSessions, setIsLoadingSessions] = useState(false);
-
-  // Use refs to avoid recreating event handlers on every render
-  const apiRef = useRef(api);
-  apiRef.current = api;
 
   // DEBUG: Log component mount/unmount
   useEffect(() => {
@@ -57,38 +48,24 @@ export function ChatLayout({ children }: ChatLayoutProps): React.ReactElement {
     });
   }, [orgId, isPersonalContext, isOrgAdmin]);
 
-  const loadSessions = useCallback(async (): Promise<void> => {
-    setIsLoadingSessions(true);
-    try {
-      const data = await apiRef.current.get("/chat/sessions");
-      // Backend returns paginated response: { sessions: [...], total, limit, offset }
-      setSessions((data as { sessions: Session[] }).sessions);
-    } catch (err) {
-      console.error("Failed to load sessions:", err);
-    } finally {
-      setIsLoadingSessions(false);
-    }
-  }, []);
-
   const resetToNewChat = useCallback((): void => {
     setCurrentSessionId(null);
     dispatchNewChatEvent();
-    loadSessions();
-  }, [loadSessions]);
+    refreshSessions();
+  }, [refreshSessions]);
 
   useEffect(() => {
     if (!isSignedIn) return;
 
-    apiRef.current.syncUser()
-      .then(() => loadSessions())
+    api.syncUser()
       .catch((err) => console.error("User sync failed:", err));
-  }, [isSignedIn, loadSessions]);
+  }, [isSignedIn, api]);
 
   // Note: We don't need a separate useEffect for orgId changes because
   // OrganizationProvider dispatches 'orgContextChanged' event which is
   // handled below. Having both would cause duplicate resets.
 
-  // Stable event listener setup using refs
+  // Stable event listener setup
   useEffect(() => {
     const handleOrgContextChanged = (event: Event): void => {
       const customEvent = event as CustomEvent;
@@ -98,7 +75,7 @@ export function ChatLayout({ children }: ChatLayoutProps): React.ReactElement {
 
     const handleSessionUpdated = (): void => {
       console.log("[ChatLayout] Received 'sessionUpdated' event");
-      loadSessions();
+      refreshSessions();
     };
 
     window.addEventListener("orgContextChanged", handleOrgContextChanged);
@@ -108,7 +85,7 @@ export function ChatLayout({ children }: ChatLayoutProps): React.ReactElement {
       window.removeEventListener("orgContextChanged", handleOrgContextChanged);
       window.removeEventListener("sessionUpdated", handleSessionUpdated);
     };
-  }, [loadSessions, resetToNewChat]);
+  }, [refreshSessions, resetToNewChat]);
 
   function handleNewChat(): void {
     setCurrentSessionId(null);
@@ -156,7 +133,7 @@ export function ChatLayout({ children }: ChatLayoutProps): React.ReactElement {
           />
         </div>
 
-        <main className="flex-1 flex flex-col relative bg-black/20">
+        <main className="flex-1 min-h-0 flex flex-col relative bg-black/20">
           <header className="h-14 border-b border-white/10 flex items-center justify-end px-4 backdrop-blur-sm bg-black/20 absolute top-0 right-0 left-0 z-20">
             <UserButton 
               appearance={{
@@ -167,7 +144,7 @@ export function ChatLayout({ children }: ChatLayoutProps): React.ReactElement {
             />
           </header>
 
-          <div className="flex-1 overflow-hidden pt-14">
+          <div className="flex-1 min-h-0 pt-14 flex flex-col">
             {children}
           </div>
         </main>

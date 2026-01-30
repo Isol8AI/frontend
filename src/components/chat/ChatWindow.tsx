@@ -6,10 +6,10 @@ import Link from "next/link";
 
 import { ChatInput } from "./ChatInput";
 import { MessageList } from "./MessageList";
-import { useApi } from "@/lib/api";
 import { useEncryption } from "@/hooks/useEncryption";
 import { useChat } from "@/hooks/useChat";
 import { useOrgEncryptionStatus } from "@/hooks/useOrgEncryptionStatus";
+import { useModels } from "@/hooks/useModels";
 import { useOrgContext } from "@/components/providers/OrganizationProvider";
 import { SetupEncryptionPrompt } from "@/components/encryption/SetupEncryptionPrompt";
 import { UnlockEncryptionPrompt } from "@/components/encryption/UnlockEncryptionPrompt";
@@ -19,11 +19,6 @@ import { AwaitingOrgKeyDistribution } from "@/components/encryption/AwaitingOrgK
 import { EncryptionStatusBadge } from "@/components/encryption/EncryptionStatusBadge";
 import { Button } from "@/components/ui/button";
 import { Settings } from "lucide-react";
-
-interface Model {
-  id: string;
-  name: string;
-}
 
 
 
@@ -35,7 +30,6 @@ interface Message {
 }
 
 export function ChatWindow(): React.ReactElement {
-  const api = useApi();
   const { user } = useUser();
   const encryption = useEncryption();
   const { orgId, isOrgAdmin } = useOrgContext();
@@ -47,7 +41,7 @@ export function ChatWindow(): React.ReactElement {
     },
   });
 
-  const [models, setModels] = useState<Model[]>([]);
+  const { models } = useModels();
   const [selectedModel, setSelectedModel] = useState<string>("");
 
   // Determine if encryption is ready for chat
@@ -55,26 +49,12 @@ export function ChatWindow(): React.ReactElement {
   const isInitialState = encryptedChat.messages.length === 0;
   const isTyping = encryptedChat.isStreaming;
 
-  // Load models on mount
+  // Set default model when models load
   useEffect(() => {
-    async function loadModels(): Promise<void> {
-      if (!user) {
-        setModels([]);
-        setSelectedModel("");
-        return;
-      }
-      try {
-        const data = await api.get("/chat/models") as Model[];
-        setModels(data);
-        if (data.length > 0) {
-          setSelectedModel(data[0].id);
-        }
-      } catch (err) {
-        console.error("Failed to fetch models:", err);
-      }
+    if (models.length > 0 && !selectedModel) {
+      setSelectedModel(models[0].id);
     }
-    loadModels();
-  }, [user, api]);
+  }, [models, selectedModel]);
 
   // Track previous orgId to detect context changes
   const prevOrgIdRef = useRef<string | null | undefined>(undefined);
@@ -384,7 +364,7 @@ export function ChatWindow(): React.ReactElement {
 
   // Normal chat state
   return (
-    <div className="flex flex-col h-full bg-black/20">
+    <div className="flex flex-col h-full min-h-0 bg-black/20">
       <div className="absolute top-4 right-4 z-20">
         <div className="flex items-center gap-2">
           <EncryptionStatusBadge />
