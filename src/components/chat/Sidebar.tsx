@@ -3,7 +3,7 @@
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Plus, MessageSquare, Loader2 } from "lucide-react";
+import { Plus, MessageSquare, Loader2, Trash2 } from "lucide-react";
 
 interface Session {
   id: string;
@@ -16,6 +16,7 @@ interface SidebarProps extends React.HTMLAttributes<HTMLDivElement> {
   isLoading?: boolean;
   onNewChat?: () => void;
   onSelectSession?: (sessionId: string) => void;
+  onDeleteSession?: (sessionId: string) => void;
 }
 
 export function Sidebar({
@@ -25,6 +26,7 @@ export function Sidebar({
   isLoading = false,
   onNewChat,
   onSelectSession,
+  onDeleteSession,
   ...props
 }: SidebarProps) {
   return (
@@ -52,20 +54,30 @@ export function Sidebar({
             </p>
           ) : (
             sessions.map((session) => (
-              <Button
-                key={session.id}
-                variant="ghost"
-                className={cn(
-                  "w-full justify-start gap-2 font-normal truncate transition-all",
-                  currentSessionId === session.id 
-                    ? "bg-white/10 text-white" 
-                    : "text-white/60 hover:text-white hover:bg-white/5"
-                )}
-                onClick={() => onSelectSession?.(session.id)}
-              >
-                <MessageSquare className="h-4 w-4 flex-shrink-0 opacity-70" />
-                <span className="truncate">{session.name}</span>
-              </Button>
+              <div key={session.id} className="group relative">
+                <Button
+                  variant="ghost"
+                  className={cn(
+                    "w-full justify-start gap-2 font-normal truncate transition-all pr-8",
+                    currentSessionId === session.id
+                      ? "bg-white/10 text-white"
+                      : "text-white/60 hover:text-white hover:bg-white/5"
+                  )}
+                  onClick={() => onSelectSession?.(session.id)}
+                >
+                  <MessageSquare className="h-4 w-4 flex-shrink-0 opacity-70" />
+                  <span className="truncate">{session.name}</span>
+                </Button>
+                <button
+                  className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-white/10 transition-opacity"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDeleteSession?.(session.id);
+                  }}
+                >
+                  <Trash2 className="h-4 w-4 text-white/40 hover:text-red-400 transition-colors" />
+                </button>
+              </div>
             ))
           )}
         </div>

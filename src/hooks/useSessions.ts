@@ -41,10 +41,33 @@ export function useSessions() {
     }
   );
 
+  const deleteSession = useCallback(async (sessionId: string) => {
+    const token = await getToken();
+    if (!token) throw new Error("No auth token");
+
+    const res = await fetch(`${BACKEND_URL}/chat/sessions/${sessionId}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    if (!res.ok) throw new Error("Failed to delete session");
+
+    // Optimistically remove from local cache
+    mutate(
+      (current) => current ? {
+        ...current,
+        sessions: current.sessions.filter(s => s.id !== sessionId),
+        total: current.total - 1,
+      } : current,
+      { revalidate: false }
+    );
+  }, [getToken, mutate]);
+
   return {
     sessions: data?.sessions ?? [],
     isLoading,
     error,
     refresh: () => mutate(),
+    deleteSession,
   };
 }

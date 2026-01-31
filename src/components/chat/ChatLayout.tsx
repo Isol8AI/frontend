@@ -11,6 +11,16 @@ import { useOrgContext } from "@/components/providers/OrganizationProvider";
 import { useApi } from "@/lib/api";
 import { useSessions } from "@/hooks/useSessions";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface ChatLayoutProps {
   children: React.ReactNode;
@@ -28,8 +38,9 @@ export function ChatLayout({ children }: ChatLayoutProps): React.ReactElement {
   const { isSignedIn } = useAuth();
   const api = useApi();
   const { orgId, isPersonalContext, isOrgAdmin } = useOrgContext();
-  const { sessions, isLoading: isLoadingSessions, refresh: refreshSessions } = useSessions();
+  const { sessions, isLoading: isLoadingSessions, refresh: refreshSessions, deleteSession } = useSessions();
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const [sessionToDelete, setSessionToDelete] = useState<string | null>(null);
 
   // DEBUG: Log component mount/unmount
   useEffect(() => {
@@ -97,6 +108,24 @@ export function ChatLayout({ children }: ChatLayoutProps): React.ReactElement {
     dispatchSelectSessionEvent(sessionId);
   }
 
+  const handleConfirmDelete = useCallback(async (): Promise<void> => {
+    if (!sessionToDelete) return;
+
+    try {
+      await deleteSession(sessionToDelete);
+
+      // If we deleted the active session, reset to new chat
+      if (sessionToDelete === currentSessionId) {
+        setCurrentSessionId(null);
+        dispatchNewChatEvent();
+      }
+    } catch (err) {
+      console.error("Failed to delete session:", err);
+    } finally {
+      setSessionToDelete(null);
+    }
+  }, [sessionToDelete, currentSessionId, deleteSession]);
+
   return (
     <div className="flex h-screen bg-black text-white overflow-hidden relative selection:bg-white/20">
       {/* Global Grain Overlay */}
@@ -130,6 +159,7 @@ export function ChatLayout({ children }: ChatLayoutProps): React.ReactElement {
             isLoading={isLoadingSessions}
             onNewChat={handleNewChat}
             onSelectSession={handleSelectSession}
+            onDeleteSession={(id) => setSessionToDelete(id)}
           />
         </div>
 
@@ -149,6 +179,23 @@ export function ChatLayout({ children }: ChatLayoutProps): React.ReactElement {
           </div>
         </main>
       </div>
+
+      <AlertDialog open={!!sessionToDelete} onOpenChange={(open) => !open && setSessionToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this chat?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete this conversation and all its messages. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmDelete} className="bg-red-600 hover:bg-red-700">
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
