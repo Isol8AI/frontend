@@ -6,7 +6,7 @@ import Link from "next/link";
 import { ChatInput } from "./ChatInput";
 import { MessageList } from "./MessageList";
 import { useEncryption } from "@/hooks/useEncryption";
-import { useChat } from "@/hooks/useChat";
+import { useChatWebSocket as useChat } from "@/hooks/useChatWebSocket";
 import { useOrgEncryptionStatus } from "@/hooks/useOrgEncryptionStatus";
 import { useModels } from "@/hooks/useModels";
 import { useOrgContext } from "@/components/providers/OrganizationProvider";
