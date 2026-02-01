@@ -361,13 +361,16 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
         let storedAssistantPayload: SerializedEncryptedPayload | undefined;
 
           const lastUpdateRef = { current: Date.now() };
-          
+          let readCount = 0;
+
           try {
             while (true) {
               const { done, value } = await reader.read();
               if (done) break;
+              readCount++;
 
               const chunk = decoder.decode(value);
+              console.log(`[SSE] reader.read() #${readCount} returned ${chunk.length} bytes at ${Date.now()}`);
               const lines = chunk.split('\n');
 
               for (const line of lines) {
@@ -388,6 +391,7 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
                       data.encrypted_content
                     );
                     fullContent += decryptedChunk;
+                    console.log(`[SSE] Chunk received at ${Date.now()}: "${decryptedChunk}"`);
                   } else if (data.type === 'thinking') {
                     // Decrypt thinking chunk
                     const decryptedThinking = encryption.decryptTransportResponse(
@@ -416,9 +420,9 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
                     throw new Error(data.message);
                   }
                   
-                  // Throttle updates for main content (every 50ms)
+                  // Throttle updates for main content (every 16ms for smooth 60fps)
                   const now = Date.now();
-                  if (now - lastUpdateRef.current > 50) {
+                  if (now - lastUpdateRef.current > 16) {
                      setMessages((prev) =>
                       prev.map((msg) =>
                         msg.id === assistantMsgId
