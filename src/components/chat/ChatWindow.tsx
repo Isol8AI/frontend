@@ -1,7 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { useUser } from "@clerk/nextjs";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 
 import { ChatInput } from "./ChatInput";
@@ -30,7 +29,6 @@ interface Message {
 }
 
 export function ChatWindow(): React.ReactElement {
-  const { user } = useUser();
   const encryption = useEncryption();
   const { orgId, isOrgAdmin } = useOrgContext();
   const orgEncryption = useOrgEncryptionStatus(orgId);
@@ -42,19 +40,20 @@ export function ChatWindow(): React.ReactElement {
   });
 
   const { models } = useModels();
-  const [selectedModel, setSelectedModel] = useState<string>("");
+  const [userSelectedModel, setUserSelectedModel] = useState<string>("");
+
+  // Derive effective model: use user selection if valid, otherwise default to first model
+  const selectedModel = useMemo(() => {
+    if (userSelectedModel && models.some(m => m.id === userSelectedModel)) {
+      return userSelectedModel;
+    }
+    return models.length > 0 ? models[0].id : "";
+  }, [userSelectedModel, models]);
 
   // Determine if encryption is ready for chat
   const isEncryptionReady = encryption.state.isSetup && encryption.state.isUnlocked;
   const isInitialState = encryptedChat.messages.length === 0;
   const isTyping = encryptedChat.isStreaming;
-
-  // Set default model when models load
-  useEffect(() => {
-    if (models.length > 0 && !selectedModel) {
-      setSelectedModel(models[0].id);
-    }
-  }, [models, selectedModel]);
 
   // Track previous orgId to detect context changes
   const prevOrgIdRef = useRef<string | null | undefined>(undefined);
@@ -316,7 +315,7 @@ export function ChatWindow(): React.ReactElement {
             disabled={isTyping} 
             models={models}
             selectedModel={selectedModel}
-            onModelChange={setSelectedModel}
+            onModelChange={setUserSelectedModel}
           />
         </div>
       </div>
@@ -354,7 +353,7 @@ export function ChatWindow(): React.ReactElement {
                 centered 
                 models={models}
                 selectedModel={selectedModel}
-                onModelChange={setSelectedModel}
+                onModelChange={setUserSelectedModel}
             />
           </div>
         </div>
@@ -381,7 +380,7 @@ export function ChatWindow(): React.ReactElement {
         disabled={isTyping} 
         models={models}
         selectedModel={selectedModel}
-        onModelChange={setSelectedModel}
+        onModelChange={setUserSelectedModel}
       />
     </div>
   );
