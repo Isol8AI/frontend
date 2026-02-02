@@ -527,6 +527,9 @@ export function useChatWebSocket(options: UseChatOptions = {}): UseChatReturn {
         }
       }
 
+      // Set loading state FIRST to prevent flash of welcome screen during transition
+      setIsLoadingSession(true);
+
       // Check client-side cache first (zero-trust: decrypted messages in browser memory only)
       const cachedMessages = getCachedSession(id, orgId);
       if (cachedMessages) {
@@ -534,10 +537,9 @@ export function useChatWebSocket(options: UseChatOptions = {}): UseChatReturn {
         setMessages(cachedMessages);
         setSessionId(id);
         setError(null);
+        setIsLoadingSession(false);
         return;
       }
-
-      setIsLoadingSession(true);
       try {
         const token = await getToken();
         if (!token) {
