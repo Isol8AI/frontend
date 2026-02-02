@@ -86,14 +86,14 @@ describe('Sidebar', () => {
       render(<Sidebar sessions={mockSessions} currentSessionId="session-2" />);
 
       const currentButton = screen.getByText('Second Conversation').closest('button');
-      expect(currentButton).toHaveClass('bg-white/10');
+      expect(currentButton).toHaveClass('bg-accent');
     });
 
     it('does not highlight non-current sessions', () => {
       render(<Sidebar sessions={mockSessions} currentSessionId="session-2" />);
 
       const otherButton = screen.getByText('First Conversation').closest('button');
-      expect(otherButton).not.toHaveClass('bg-white/10');
+      expect(otherButton).not.toHaveClass('bg-accent');
     });
   });
 });

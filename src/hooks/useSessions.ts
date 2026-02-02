@@ -35,9 +35,9 @@ export function useSessions() {
     "/chat/sessions",
     fetcher,
     {
-      revalidateOnFocus: true,
+      revalidateOnFocus: false,  // Prevents refetch on tab focus (reduces API calls)
       revalidateOnMount: true,
-      dedupingInterval: 2000,
+      dedupingInterval: 10000,   // 10s deduping prevents rapid-fire fetches during session switching
     }
   );
 

@@ -60,6 +60,8 @@ export interface UseChatReturn {
   sessionId: string | null;
   /** Whether a message is currently streaming */
   isStreaming: boolean;
+  /** Whether a session is being loaded */
+  isLoadingSession?: boolean;
   /** Current error message */
   error: string | null;
   /** Send a new message */
@@ -68,6 +70,8 @@ export interface UseChatReturn {
   loadSession: (sessionId: string) => Promise<void>;
   /** Clear the current session */
   clearSession: () => void;
+  /** Invalidate cache for a specific session (e.g., when deleted) */
+  invalidateSessionCache?: (sessionId: string) => void;
   /** Abort current streaming request */
   abort: () => void;
 }

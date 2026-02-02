@@ -34,6 +34,76 @@ import type {
 const MAX_RECONNECT_ATTEMPTS = 5;
 const RECONNECT_DELAYS = [1000, 2000, 4000, 8000, 16000]; // Exponential backoff
 const PING_INTERVAL_MS = 30000; // 30 seconds
+const MAX_CACHED_SESSIONS = 10; // Maximum number of sessions to cache in memory
+
+// =============================================================================
+// Client-Side Session Cache (Zero-Trust: decrypted messages stay in browser only)
+// =============================================================================
+
+interface CachedSession {
+  messages: ChatMessage[];
+  timestamp: number;
+}
+
+/**
+ * In-memory cache for decrypted session messages.
+ * This cache is scoped per org context to prevent data leakage between contexts.
+ * Key format: `${orgId || 'personal'}:${sessionId}`
+ */
+const sessionCache = new Map<string, CachedSession>();
+
+function getCacheKey(sessionId: string, orgId: string | null | undefined): string {
+  return `${orgId || 'personal'}:${sessionId}`;
+}
+
+function getCachedSession(sessionId: string, orgId: string | null | undefined): ChatMessage[] | null {
+  const key = getCacheKey(sessionId, orgId);
+  const cached = sessionCache.get(key);
+  if (cached) {
+    return cached.messages;
+  }
+  return null;
+}
+
+function setCachedSession(sessionId: string, orgId: string | null | undefined, messages: ChatMessage[]): void {
+  const key = getCacheKey(sessionId, orgId);
+
+  // Enforce max cache size by removing oldest entries
+  if (sessionCache.size >= MAX_CACHED_SESSIONS && !sessionCache.has(key)) {
+    let oldestKey: string | null = null;
+    let oldestTime = Infinity;
+
+    for (const [k, v] of sessionCache.entries()) {
+      if (v.timestamp < oldestTime) {
+        oldestTime = v.timestamp;
+        oldestKey = k;
+      }
+    }
+
+    if (oldestKey) {
+      sessionCache.delete(oldestKey);
+    }
+  }
+
+  sessionCache.set(key, {
+    messages,
+    timestamp: Date.now(),
+  });
+}
+
+function invalidateCachedSession(sessionId: string, orgId: string | null | undefined): void {
+  const key = getCacheKey(sessionId, orgId);
+  sessionCache.delete(key);
+}
+
+function clearCacheForContext(orgId: string | null | undefined): void {
+  const prefix = `${orgId || 'personal'}:`;
+  for (const key of sessionCache.keys()) {
+    if (key.startsWith(prefix)) {
+      sessionCache.delete(key);
+    }
+  }
+}
 
 /**
  * Construct WebSocket URL from environment or BACKEND_URL.
@@ -158,6 +228,7 @@ export function useChatWebSocket(options: UseChatOptions = {}): UseChatReturn {
     initialSessionId ?? null
   );
   const [isStreaming, setIsStreaming] = useState(false);
+  const [isLoadingSession, setIsLoadingSession] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [connectionState, setConnectionState] = useState<ConnectionState>('disconnected');
 
@@ -170,6 +241,19 @@ export function useChatWebSocket(options: UseChatOptions = {}): UseChatReturn {
   // Track current streaming message for updates
   const currentAssistantMsgIdRef = useRef<string | null>(null);
   const fullContentRef = useRef<string>('');
+
+  // Refs for cache updates (needed because handleMessage callback can't depend on state)
+  const sessionIdRef = useRef<string | null>(sessionId);
+  const orgIdRef = useRef<string | undefined>(orgId);
+
+  // Keep refs in sync with state
+  useEffect(() => {
+    sessionIdRef.current = sessionId;
+  }, [sessionId]);
+
+  useEffect(() => {
+    orgIdRef.current = orgId;
+  }, [orgId]);
 
   // Pending message to send after connection
   const pendingMessageRef = useRef<{
@@ -255,8 +339,8 @@ export function useChatWebSocket(options: UseChatOptions = {}): UseChatReturn {
         console.log('  output_tokens:', data.output_tokens);
       } else if (data.type === 'done') {
         // Update messages with stored payloads for future re-encryption
-        setMessages((prev) =>
-          prev.map((msg) => {
+        setMessages((prev) => {
+          const updatedMessages = prev.map((msg) => {
             // Find the user message (the one before the current assistant message)
             const assistantIdx = prev.findIndex(
               (m) => m.id === currentAssistantMsgIdRef.current
@@ -274,8 +358,16 @@ export function useChatWebSocket(options: UseChatOptions = {}): UseChatReturn {
               };
             }
             return msg;
-          })
-        );
+          });
+
+          // Update client-side cache with new messages
+          if (sessionIdRef.current) {
+            setCachedSession(sessionIdRef.current, orgIdRef.current, updatedMessages);
+            console.log(`[WS] Updated cache for session ${sessionIdRef.current}`);
+          }
+
+          return updatedMessages;
+        });
 
         setIsStreaming(false);
         currentAssistantMsgIdRef.current = null;
@@ -435,6 +527,17 @@ export function useChatWebSocket(options: UseChatOptions = {}): UseChatReturn {
         }
       }
 
+      // Check client-side cache first (zero-trust: decrypted messages in browser memory only)
+      const cachedMessages = getCachedSession(id, orgId);
+      if (cachedMessages) {
+        console.log(`[WS] Loading session ${id} from client cache (${cachedMessages.length} messages)`);
+        setMessages(cachedMessages);
+        setSessionId(id);
+        setError(null);
+        return;
+      }
+
+      setIsLoadingSession(true);
       try {
         const token = await getToken();
         if (!token) {
@@ -457,6 +560,8 @@ export function useChatWebSocket(options: UseChatOptions = {}): UseChatReturn {
 
         const data = await res.json();
 
+        let loadedMessages: ChatMessage[];
+
         // Check if messages are encrypted
         if (data.messages?.[0]?.encrypted_content) {
           // Decrypt messages
@@ -470,7 +575,7 @@ export function useChatWebSocket(options: UseChatOptions = {}): UseChatReturn {
           const decryptedContents =
             encryption.decryptStoredMessages(encryptedMessages, isOrgContext);
 
-          const loadedMessages: ChatMessage[] = data.messages.map(
+          loadedMessages = data.messages.map(
             (
               msg: { id: string; role: 'user' | 'assistant'; encrypted_content: SerializedEncryptedPayload },
               index: number
@@ -481,20 +586,22 @@ export function useChatWebSocket(options: UseChatOptions = {}): UseChatReturn {
               encryptedPayload: msg.encrypted_content,
             })
           );
-
-          setMessages(loadedMessages);
         } else {
           // Fallback for unencrypted messages (legacy)
-          const loadedMessages: ChatMessage[] = data.messages.map(
+          loadedMessages = data.messages.map(
             (msg: { id: string; role: 'user' | 'assistant'; content: string }) => ({
               id: msg.id,
               role: msg.role,
               content: msg.content,
             })
           );
-          setMessages(loadedMessages);
         }
 
+        // Cache the decrypted messages client-side
+        setCachedSession(id, orgId, loadedMessages);
+        console.log(`[WS] Cached session ${id} (${loadedMessages.length} messages)`);
+
+        setMessages(loadedMessages);
         setSessionId(id);
         setError(null);
       } catch (err) {
@@ -503,6 +610,8 @@ export function useChatWebSocket(options: UseChatOptions = {}): UseChatReturn {
           err instanceof Error ? err.message : 'Failed to load session'
         );
         throw err;
+      } finally {
+        setIsLoadingSession(false);
       }
     },
     [encryption, getToken, isOrgContext, orgId]
@@ -553,12 +662,14 @@ export function useChatWebSocket(options: UseChatOptions = {}): UseChatReturn {
         isStreaming: true,
       };
 
-      setMessages((prev) => [...prev, userMessage, assistantMessage]);
-      setIsStreaming(true);
-
-      // Store assistant message ID for updates
+      // Store assistant message ID for updates BEFORE state update
+      // This prevents race condition where early streaming chunks arrive
+      // before the ref is set, causing updates to fail
       currentAssistantMsgIdRef.current = assistantMsgId;
       fullContentRef.current = '';
+
+      setMessages((prev) => [...prev, userMessage, assistantMessage]);
+      setIsStreaming(true);
 
       try {
         // Ensure WebSocket is connected
@@ -645,12 +756,23 @@ export function useChatWebSocket(options: UseChatOptions = {}): UseChatReturn {
   // =============================================================================
 
   const clearSession = useCallback(() => {
+    // Note: We don't invalidate the cache here so users can switch back
+    // to this session without re-fetching. Cache is only cleared on:
+    // 1. Explicit invalidation (e.g., session deleted)
+    // 2. Org context change
+    // 3. Cache eviction (LRU when max sessions reached)
     setMessages([]);
     setSessionId(null);
     setError(null);
     currentAssistantMsgIdRef.current = null;
     fullContentRef.current = '';
   }, []);
+
+  // Invalidate a specific session's cache (e.g., when session is deleted)
+  const invalidateSessionCache = useCallback((sessionIdToInvalidate: string) => {
+    invalidateCachedSession(sessionIdToInvalidate, orgId);
+    console.log(`[WS] Invalidated cache for session ${sessionIdToInvalidate}`);
+  }, [orgId]);
 
   // =============================================================================
   // Abort
@@ -671,6 +793,19 @@ export function useChatWebSocket(options: UseChatOptions = {}): UseChatReturn {
   // Cleanup on Unmount
   // =============================================================================
 
+  // Clear cache when org context changes (security: prevent data leakage between contexts)
+  const prevOrgIdRef = useRef<string | undefined>(orgId);
+  useEffect(() => {
+    if (prevOrgIdRef.current !== orgId) {
+      // Clear cache for previous context when switching
+      if (prevOrgIdRef.current !== undefined) {
+        clearCacheForContext(prevOrgIdRef.current);
+        console.log(`[WS] Cleared cache for previous context: ${prevOrgIdRef.current || 'personal'}`);
+      }
+      prevOrgIdRef.current = orgId;
+    }
+  }, [orgId]);
+
   useEffect(() => {
     return () => {
       clearReconnectTimeout();
@@ -690,10 +825,12 @@ export function useChatWebSocket(options: UseChatOptions = {}): UseChatReturn {
     messages,
     sessionId,
     isStreaming,
+    isLoadingSession,
     error,
     sendMessage,
     loadSession,
     clearSession,
+    invalidateSessionCache,
     abort,
   };
 }
