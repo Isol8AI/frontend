@@ -383,6 +383,11 @@ export function useChatWebSocket(options: UseChatOptions = {}): UseChatReturn {
       };
 
       ws.onmessage = (event) => {
+        // Ignore empty messages (e.g., from HTTP integration response forwarding)
+        if (!event.data || event.data.trim() === '') {
+          return;
+        }
+
         try {
           const data: unknown = JSON.parse(event.data);
 
