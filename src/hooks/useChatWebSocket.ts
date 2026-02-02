@@ -561,12 +561,21 @@ export function useChatWebSocket(options: UseChatOptions = {}): UseChatReturn {
         }
 
         const data = await res.json();
+        console.log(`[WS] API response for session ${id}:`, {
+          hasMessages: !!data.messages,
+          messageCount: data.messages?.length,
+          firstMessageHasEncryption: !!data.messages?.[0]?.encrypted_content
+        });
 
         let loadedMessages: ChatMessage[];
 
-        // Check if messages are encrypted
-        if (data.messages?.[0]?.encrypted_content) {
-          // Decrypt messages
+        // Handle empty or missing messages array
+        if (!data.messages || data.messages.length === 0) {
+          console.log(`[WS] Session ${id} has no messages`);
+          loadedMessages = [];
+        } else if (data.messages[0]?.encrypted_content) {
+          // Decrypt encrypted messages
+          console.log(`[WS] Decrypting ${data.messages.length} encrypted messages`);
           const encryptedMessages: EncryptedMessage[] = data.messages.map(
             (msg: { role: 'user' | 'assistant'; encrypted_content: SerializedEncryptedPayload }) => ({
               role: msg.role,
@@ -590,6 +599,7 @@ export function useChatWebSocket(options: UseChatOptions = {}): UseChatReturn {
           );
         } else {
           // Fallback for unencrypted messages (legacy)
+          console.log(`[WS] Loading ${data.messages.length} unencrypted messages (legacy)`);
           loadedMessages = data.messages.map(
             (msg: { id: string; role: 'user' | 'assistant'; content: string }) => ({
               id: msg.id,
@@ -601,7 +611,7 @@ export function useChatWebSocket(options: UseChatOptions = {}): UseChatReturn {
 
         // Cache the decrypted messages client-side
         setCachedSession(id, orgId, loadedMessages);
-        console.log(`[WS] Cached session ${id} (${loadedMessages.length} messages)`);
+        console.log(`[WS] Cached and setting ${loadedMessages.length} messages for session ${id}`);
 
         setMessages(loadedMessages);
         setSessionId(id);

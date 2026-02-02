@@ -56,6 +56,15 @@ export function ChatWindow(): React.ReactElement {
   const isTyping = encryptedChat.isStreaming;
   const isLoadingSession = encryptedChat.isLoadingSession;
 
+  // Debug logging for session state
+  console.log(`[ChatWindow] Render state:`, {
+    messagesCount: encryptedChat.messages.length,
+    sessionId: encryptedChat.sessionId,
+    isLoadingSession,
+    isInitialState,
+    orgId
+  });
+
   // Track previous orgId to detect context changes
   const prevOrgIdRef = useRef<string | null | undefined>(undefined);
 
@@ -82,11 +91,13 @@ export function ChatWindow(): React.ReactElement {
     async function handleSelectSession(e: Event): Promise<void> {
       const customEvent = e as CustomEvent<{ sessionId: string }>;
       const selectedSessionId = customEvent.detail.sessionId;
+      console.log(`[ChatWindow] selectSession event received for: ${selectedSessionId}`);
 
       try {
         await encryptedChat.loadSession(selectedSessionId);
+        console.log(`[ChatWindow] loadSession completed, messages count: ${encryptedChat.messages.length}`);
       } catch (err) {
-        console.error("Failed to load session:", err);
+        console.error("[ChatWindow] Failed to load session:", err);
       }
     }
 
