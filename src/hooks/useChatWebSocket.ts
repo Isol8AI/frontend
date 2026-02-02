@@ -324,7 +324,8 @@ export function useChatWebSocket(options: UseChatOptions = {}): UseChatReturn {
       }
 
       const wsUrl = getWebSocketUrl();
-      const ws = new WebSocket(`${wsUrl}/ws/chat?token=${token}`);
+      // API Gateway WebSocket doesn't use path routing - connect to root with token
+      const ws = new WebSocket(`${wsUrl}?token=${token}`);
 
       ws.onopen = () => {
         console.log('[WS] Connected');
