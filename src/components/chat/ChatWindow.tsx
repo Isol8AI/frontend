@@ -52,7 +52,11 @@ export function ChatWindow(): React.ReactElement {
 
   // Determine if encryption is ready for chat
   const isEncryptionReady = encryption.state.isSetup && encryption.state.isUnlocked;
-  const isInitialState = encryptedChat.messages.length === 0 && !encryptedChat.isLoadingSession;
+  // Only show welcome screen if: no messages AND not loading AND no session selected
+  // If a session is selected (even with 0 messages), show the chat view, not welcome
+  const isInitialState = encryptedChat.messages.length === 0
+    && !encryptedChat.isLoadingSession
+    && !encryptedChat.sessionId;
   const isTyping = encryptedChat.isStreaming;
   const isLoadingSession = encryptedChat.isLoadingSession;
 
