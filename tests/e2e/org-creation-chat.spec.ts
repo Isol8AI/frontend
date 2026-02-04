@@ -35,20 +35,6 @@ test.describe.serial('Organization Creation and Dual Chat Flow', () => {
   let createdOrgId: string | null = null;
   let createdOrgName: string | null = null;
 
-  /**
-   * Helper to ensure encryption is ready after a page navigation.
-   * Full page navigation resets React context, so we may need to re-unlock.
-   */
-  async function ensureEncryptionAfterNavigation(page: Page): Promise<void> {
-    const unlockPrompt = page.locator('[data-testid="unlock-encryption-prompt"]');
-
-    // Check if unlock prompt is visible (encryption context was reset)
-    if (await unlockPrompt.isVisible({ timeout: 3000 }).catch(() => false)) {
-      console.log('Encryption context reset after navigation - unlocking...');
-      await unlockEncryption(page, TEST_PASSCODE);
-    }
-  }
-
   test.beforeEach(async ({ page }) => {
     // ONLY mock the enclave (no real enclave in tests)
     await page.route('**/api/v1/chat/enclave/info', async (route) => {

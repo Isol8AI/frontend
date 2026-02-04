@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback } from "react";
 import { Loader2 } from "lucide-react";
 import {
   AlertDialog,
@@ -34,15 +34,15 @@ export function AgentCreateDialog({
   const [nameError, setNameError] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
 
-  // Clear form when dialog closes
-  useEffect(() => {
-    if (!open) {
+  const handleOpenChange = useCallback((isOpen: boolean) => {
+    if (!isOpen) {
       setName("");
       setSoulContent("");
       setNameError(null);
       setIsCreating(false);
     }
-  }, [open]);
+    onOpenChange(isOpen);
+  }, [onOpenChange]);
 
   const validateName = useCallback((value: string): string | null => {
     if (!value.trim()) {
@@ -92,7 +92,7 @@ export function AgentCreateDialog({
         name.trim(),
         soulContent.trim() || undefined
       );
-      onOpenChange(false);
+      handleOpenChange(false);
     } catch {
       // Parent handles error display; keep dialog open so user can retry
       setIsCreating(false);
@@ -103,7 +103,7 @@ export function AgentCreateDialog({
     isCreating || !name.trim() || !!validateName(name);
 
   return (
-    <AlertDialog open={open} onOpenChange={(o) => !isCreating && onOpenChange(o)}>
+    <AlertDialog open={open} onOpenChange={(o) => !isCreating && handleOpenChange(o)}>
       <AlertDialogContent className="max-w-lg">
         <AlertDialogHeader>
           <AlertDialogTitle>Create a New Agent</AlertDialogTitle>
