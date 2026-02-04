@@ -28,12 +28,19 @@ interface AgentChatWindowProps {
 
 export function AgentChatWindow({ agentName }: AgentChatWindowProps): React.ReactElement {
   const encryption = useEncryption();
-  const chat = useAgentChat();
+  const {
+    messages: chatMessages,
+    isStreaming,
+    error: chatError,
+    connectionState,
+    sendMessage,
+    clearMessages,
+  } = useAgentChat();
 
   // Determine if encryption is ready for chat
   const isEncryptionReady = encryption.state.isSetup && encryption.state.isUnlocked;
-  const isInitialState = chat.messages.length === 0;
-  const isTyping = chat.isStreaming;
+  const isInitialState = chatMessages.length === 0;
+  const isTyping = isStreaming;
 
   // Track previous agentName to detect agent changes
   const prevAgentNameRef = useRef<string | null | undefined>(undefined);
@@ -41,10 +48,10 @@ export function AgentChatWindow({ agentName }: AgentChatWindowProps): React.Reac
   // Clear messages when agent changes (but not on initial mount)
   useEffect(() => {
     if (prevAgentNameRef.current !== undefined && prevAgentNameRef.current !== agentName) {
-      chat.clearMessages();
+      clearMessages();
     }
     prevAgentNameRef.current = agentName;
-  }, [agentName, chat.clearMessages]);
+  }, [agentName, clearMessages]);
 
   // Handle sending a message
   const handleSend = useCallback(async (content: string): Promise<void> => {
@@ -58,22 +65,22 @@ export function AgentChatWindow({ agentName }: AgentChatWindowProps): React.Reac
     }
 
     try {
-      await chat.sendMessage(agentName, content);
+      await sendMessage(agentName, content);
     } catch (err) {
       console.error("Failed to send message:", err);
     }
-  }, [chat, agentName, isEncryptionReady]);
+  }, [sendMessage, agentName, isEncryptionReady]);
 
   // Convert ChatMessage to Message[] for MessageList
   const messages: Message[] = useMemo(() =>
-    chat.messages.map((msg) => ({
+    chatMessages.map((msg) => ({
       id: msg.id,
       role: msg.role,
       content: msg.content,
       thinking: msg.thinking,
       model: msg.model,
     })),
-    [chat.messages]
+    [chatMessages]
   );
 
   // --- Encryption Guards ---
@@ -157,18 +164,18 @@ export function AgentChatWindow({ agentName }: AgentChatWindowProps): React.Reac
   }
 
   // --- Connection status indicator ---
-  const connectionIndicator = (chat.connectionState === 'connecting' || chat.connectionState === 'error') ? (
+  const connectionIndicator = (connectionState === 'connecting' || connectionState === 'error') ? (
     <div className={`px-3 py-1.5 rounded text-xs font-medium ${
-      chat.connectionState === 'connecting'
+      connectionState === 'connecting'
         ? 'bg-yellow-900/30 text-yellow-300'
         : 'bg-red-900/30 text-red-300'
     }`}>
-      {chat.connectionState === 'connecting' ? 'Connecting...' : 'Connection error'}
+      {connectionState === 'connecting' ? 'Connecting...' : 'Connection error'}
     </div>
   ) : null;
 
   // --- Error state ---
-  if (chat.error) {
+  if (chatError) {
     return (
       <div className="flex flex-col h-full bg-background/20">
         <div className="absolute top-4 right-4 z-20">
@@ -191,7 +198,7 @@ export function AgentChatWindow({ agentName }: AgentChatWindowProps): React.Reac
             data-testid="encryption-error"
           >
             <p className="font-medium">Encryption Error</p>
-            <p className="text-sm">{chat.error}</p>
+            <p className="text-sm">{chatError}</p>
           </div>
           <ChatInput
             onSend={handleSend}
