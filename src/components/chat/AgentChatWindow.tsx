@@ -24,9 +24,15 @@ interface Message {
 
 interface AgentChatWindowProps {
   agentName: string | null;
+  pendingSoulContent?: string;
+  onSoulContentSent?: () => void;
 }
 
-export function AgentChatWindow({ agentName }: AgentChatWindowProps): React.ReactElement {
+export function AgentChatWindow({
+  agentName,
+  pendingSoulContent,
+  onSoulContentSent,
+}: AgentChatWindowProps): React.ReactElement {
   const encryption = useEncryption();
   const {
     messages: chatMessages,
@@ -38,7 +44,8 @@ export function AgentChatWindow({ agentName }: AgentChatWindowProps): React.Reac
   } = useAgentChat();
 
   // Determine if encryption is ready for chat
-  const isEncryptionReady = encryption.state.isSetup && encryption.state.isUnlocked;
+  const isEncryptionReady =
+    encryption.state.isSetup && encryption.state.isUnlocked;
   const isInitialState = chatMessages.length === 0;
   const isTyping = isStreaming;
 
@@ -47,46 +54,68 @@ export function AgentChatWindow({ agentName }: AgentChatWindowProps): React.Reac
 
   // Clear messages when agent changes (but not on initial mount)
   useEffect(() => {
-    if (prevAgentNameRef.current !== undefined && prevAgentNameRef.current !== agentName) {
+    if (
+      prevAgentNameRef.current !== undefined &&
+      prevAgentNameRef.current !== agentName
+    ) {
       clearMessages();
     }
     prevAgentNameRef.current = agentName;
   }, [agentName, clearMessages]);
 
   // Handle sending a message
-  const handleSend = useCallback(async (content: string): Promise<void> => {
-    if (!isEncryptionReady) {
-      console.error("Encryption not ready");
-      return;
-    }
-    if (!agentName) {
-      console.error("No agent selected");
-      return;
-    }
+  const handleSend = useCallback(
+    async (content: string): Promise<void> => {
+      if (!isEncryptionReady) {
+        console.error("Encryption not ready");
+        return;
+      }
+      if (!agentName) {
+        console.error("No agent selected");
+        return;
+      }
 
-    try {
-      await sendMessage(agentName, content);
-    } catch (err) {
-      console.error("Failed to send message:", err);
-    }
-  }, [sendMessage, agentName, isEncryptionReady]);
+      try {
+        // Send soul content on first message only (when agent has no tarball yet)
+        await sendMessage(agentName, content, pendingSoulContent);
+        // Clear soul content after first send so it's not sent again
+        if (pendingSoulContent) {
+          onSoulContentSent?.();
+        }
+      } catch (err) {
+        console.error("Failed to send message:", err);
+      }
+    },
+    [
+      sendMessage,
+      agentName,
+      isEncryptionReady,
+      pendingSoulContent,
+      onSoulContentSent,
+    ],
+  );
 
   // Convert ChatMessage to Message[] for MessageList
-  const messages: Message[] = useMemo(() =>
-    chatMessages.map((msg) => ({
-      id: msg.id,
-      role: msg.role,
-      content: msg.content,
-      thinking: msg.thinking,
-      model: msg.model,
-    })),
-    [chatMessages]
+  const messages: Message[] = useMemo(
+    () =>
+      chatMessages.map((msg) => ({
+        id: msg.id,
+        role: msg.role,
+        content: msg.content,
+        thinking: msg.thinking,
+        model: msg.model,
+      })),
+    [chatMessages],
   );
 
   // --- Encryption Guards ---
 
   // Show loading state only during initial encryption status fetch
-  if (encryption.state.isLoading && encryption.state.isSetup === false && encryption.state.publicKey === null) {
+  if (
+    encryption.state.isLoading &&
+    encryption.state.isSetup === false &&
+    encryption.state.publicKey === null
+  ) {
     return (
       <div className="flex flex-col h-full items-center justify-center">
         <div className="animate-pulse text-muted-foreground">
@@ -104,7 +133,11 @@ export function AgentChatWindow({ agentName }: AgentChatWindowProps): React.Reac
           <div className="flex items-center gap-2">
             <EncryptionStatusBadge />
             <Link href="/settings/encryption">
-              <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-accent">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-accent"
+              >
                 <Settings className="h-4 w-4" />
               </Button>
             </Link>
@@ -125,7 +158,11 @@ export function AgentChatWindow({ agentName }: AgentChatWindowProps): React.Reac
           <div className="flex items-center gap-2">
             <EncryptionStatusBadge />
             <Link href="/settings/encryption">
-              <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-accent">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-accent"
+              >
                 <Settings className="h-4 w-4" />
               </Button>
             </Link>
@@ -146,7 +183,11 @@ export function AgentChatWindow({ agentName }: AgentChatWindowProps): React.Reac
           <div className="flex items-center gap-2">
             <EncryptionStatusBadge />
             <Link href="/settings/encryption">
-              <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-accent">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-accent"
+              >
                 <Settings className="h-4 w-4" />
               </Button>
             </Link>
@@ -164,15 +205,20 @@ export function AgentChatWindow({ agentName }: AgentChatWindowProps): React.Reac
   }
 
   // --- Connection status indicator ---
-  const connectionIndicator = (connectionState === 'connecting' || connectionState === 'error') ? (
-    <div className={`px-3 py-1.5 rounded text-xs font-medium ${
-      connectionState === 'connecting'
-        ? 'bg-yellow-900/30 text-yellow-300'
-        : 'bg-red-900/30 text-red-300'
-    }`}>
-      {connectionState === 'connecting' ? 'Connecting...' : 'Connection error'}
-    </div>
-  ) : null;
+  const connectionIndicator =
+    connectionState === "connecting" || connectionState === "error" ? (
+      <div
+        className={`px-3 py-1.5 rounded text-xs font-medium ${
+          connectionState === "connecting"
+            ? "bg-yellow-900/30 text-yellow-300"
+            : "bg-red-900/30 text-red-300"
+        }`}
+      >
+        {connectionState === "connecting"
+          ? "Connecting..."
+          : "Connection error"}
+      </div>
+    ) : null;
 
   // --- Error state ---
   if (chatError) {
@@ -183,7 +229,11 @@ export function AgentChatWindow({ agentName }: AgentChatWindowProps): React.Reac
             {connectionIndicator}
             <EncryptionStatusBadge />
             <Link href="/settings/encryption">
-              <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-accent">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-accent"
+              >
                 <Settings className="h-4 w-4" />
               </Button>
             </Link>
@@ -200,10 +250,7 @@ export function AgentChatWindow({ agentName }: AgentChatWindowProps): React.Reac
             <p className="font-medium">Encryption Error</p>
             <p className="text-sm">{chatError}</p>
           </div>
-          <ChatInput
-            onSend={handleSend}
-            disabled={isTyping}
-          />
+          <ChatInput onSend={handleSend} disabled={isTyping} />
         </div>
       </div>
     );
@@ -218,7 +265,11 @@ export function AgentChatWindow({ agentName }: AgentChatWindowProps): React.Reac
             {connectionIndicator}
             <EncryptionStatusBadge />
             <Link href="/settings/encryption">
-              <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-accent">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-accent"
+              >
                 <Settings className="h-4 w-4" />
               </Button>
             </Link>
@@ -227,18 +278,16 @@ export function AgentChatWindow({ agentName }: AgentChatWindowProps): React.Reac
 
         <div className="flex-1 flex flex-col items-center justify-center p-4">
           <div className="text-center mb-8">
-            <h1 className="text-4xl font-bold mb-3 text-foreground tracking-tight font-host">{agentName}</h1>
+            <h1 className="text-4xl font-bold mb-3 text-foreground tracking-tight font-host">
+              {agentName}
+            </h1>
             <p className="text-muted-foreground text-lg font-light">
               Start a conversation with your agent
             </p>
           </div>
 
           <div className="w-full max-w-2xl">
-            <ChatInput
-              onSend={handleSend}
-              disabled={isTyping}
-              centered
-            />
+            <ChatInput onSend={handleSend} disabled={isTyping} centered />
           </div>
         </div>
       </div>
@@ -253,17 +302,18 @@ export function AgentChatWindow({ agentName }: AgentChatWindowProps): React.Reac
           {connectionIndicator}
           <EncryptionStatusBadge />
           <Link href="/settings/encryption">
-            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-accent">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-accent"
+            >
               <Settings className="h-4 w-4" />
             </Button>
           </Link>
         </div>
       </div>
       <MessageList messages={messages} isTyping={isTyping} />
-      <ChatInput
-        onSend={handleSend}
-        disabled={isTyping}
-      />
+      <ChatInput onSend={handleSend} disabled={isTyping} />
     </div>
   );
 }

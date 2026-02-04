@@ -5,27 +5,36 @@ import { ChatLayout } from "@/components/chat/ChatLayout";
 import { ChatWindow } from "@/components/chat/ChatWindow";
 import { AgentChatWindow } from "@/components/chat/AgentChatWindow";
 
-type ActiveView = 'chats' | 'agents';
+type ActiveView = "chats" | "agents";
 
 export default function ChatPage() {
-  const [activeView, setActiveView] = useState<ActiveView>('chats');
+  const [activeView, setActiveView] = useState<ActiveView>("chats");
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
+  const [pendingSoulContent, setPendingSoulContent] = useState<
+    string | undefined
+  >(undefined);
 
   useEffect(() => {
     function handleSelectAgent(e: Event) {
-      const customEvent = e as CustomEvent<{ agentName: string }>;
+      const customEvent = e as CustomEvent<{
+        agentName: string;
+        soulContent?: string;
+      }>;
       setSelectedAgent(customEvent.detail.agentName);
-      setActiveView('agents');
+      setPendingSoulContent(customEvent.detail.soulContent);
+      setActiveView("agents");
     }
 
     function handleSelectChats() {
-      setActiveView('chats');
+      setActiveView("chats");
       setSelectedAgent(null);
+      setPendingSoulContent(undefined);
     }
 
     function handleNewChat() {
-      setActiveView('chats');
+      setActiveView("chats");
       setSelectedAgent(null);
+      setPendingSoulContent(undefined);
     }
 
     window.addEventListener("selectAgent", handleSelectAgent);
@@ -41,10 +50,14 @@ export default function ChatPage() {
 
   return (
     <ChatLayout>
-      {activeView === 'chats' ? (
+      {activeView === "chats" ? (
         <ChatWindow />
       ) : (
-        <AgentChatWindow agentName={selectedAgent} />
+        <AgentChatWindow
+          agentName={selectedAgent}
+          pendingSoulContent={pendingSoulContent}
+          onSoulContentSent={() => setPendingSoulContent(undefined)}
+        />
       )}
     </ChatLayout>
   );
