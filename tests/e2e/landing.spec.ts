@@ -28,8 +28,7 @@ test('landing page shows pricing and toggles', async ({ page }) => {
   await expect(pricingHeader).toBeVisible();
 
   // Check for Monthly/Yearly toggle
-  const toggle = page.locator('button[role="switch"]');
-  // It might be a custom button, so we check for text "Yearly"
+  // Check for text "Yearly" (toggle button)
   const yearlyText = page.getByText('Yearly');
   await expect(yearlyText).toBeVisible();
 

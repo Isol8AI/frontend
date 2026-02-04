@@ -207,12 +207,6 @@ function isValidWSData(data: unknown): data is WSData {
 }
 
 // =============================================================================
-// Connection State
-// =============================================================================
-
-type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'error';
-
-// =============================================================================
 // Hook Implementation
 // =============================================================================
 
@@ -230,7 +224,6 @@ export function useChatWebSocket(options: UseChatOptions = {}): UseChatReturn {
   const [isStreaming, setIsStreaming] = useState(false);
   const [isLoadingSession, setIsLoadingSession] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [connectionState, setConnectionState] = useState<ConnectionState>('disconnected');
 
   // Refs for WebSocket management
   const wsRef = useRef<WebSocket | null>(null);
@@ -407,8 +400,6 @@ export function useChatWebSocket(options: UseChatOptions = {}): UseChatReturn {
       return;
     }
 
-    setConnectionState('connecting');
-
     try {
       const token = await getToken();
       if (!token) {
@@ -422,7 +413,6 @@ export function useChatWebSocket(options: UseChatOptions = {}): UseChatReturn {
       ws.onopen = () => {
         console.log('[WS] Connected');
         reconnectAttemptRef.current = 0;
-        setConnectionState('connected');
         setError(null);
 
         // Start ping interval to keep connection alive
@@ -445,7 +435,6 @@ export function useChatWebSocket(options: UseChatOptions = {}): UseChatReturn {
       ws.onclose = (event) => {
         console.log(`[WS] Closed: code=${event.code}, reason=${event.reason}`);
         wsRef.current = null;
-        setConnectionState('disconnected');
         clearPingInterval();
 
         // Don't reconnect for normal closure or auth failure
@@ -465,7 +454,6 @@ export function useChatWebSocket(options: UseChatOptions = {}): UseChatReturn {
             connect();
           }, delay);
         } else {
-          setConnectionState('error');
           setError('Connection lost. Please refresh the page.');
         }
       };
@@ -497,7 +485,6 @@ export function useChatWebSocket(options: UseChatOptions = {}): UseChatReturn {
       wsRef.current = ws;
     } catch (err) {
       console.error('[WS] Connection error:', err);
-      setConnectionState('error');
       setError(err instanceof Error ? err.message : 'Failed to connect');
 
       // Reject pending message
@@ -848,4 +835,3 @@ export function useChatWebSocket(options: UseChatOptions = {}): UseChatReturn {
 }
 
 // Export connection state type for components that need it
-export type { ConnectionState };

@@ -30,15 +30,6 @@ export interface OrgEncryptionStatus {
   refetch: () => Promise<void>;
 }
 
-const DEFAULT_STATUS: OrgEncryptionStatus = {
-  isLoading: false,
-  orgHasEncryption: false,
-  userHasOrgKey: false,
-  encryptedOrgKey: null,
-  error: null,
-  refetch: async () => {},
-};
-
 export function useOrgEncryptionStatus(orgId: string | null): OrgEncryptionStatus {
   const { getToken } = useAuth();
   const [status, setStatus] = useState<Omit<OrgEncryptionStatus, 'refetch'>>({

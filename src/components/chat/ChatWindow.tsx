@@ -79,6 +79,7 @@ export function ChatWindow(): React.ReactElement {
       encryptedChat.clearSession();
     }
     prevOrgIdRef.current = orgId;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orgId, encryptedChat.clearSession]);
 
   // Handle new chat event
@@ -88,6 +89,7 @@ export function ChatWindow(): React.ReactElement {
     }
     window.addEventListener("newChat", handleNewChat);
     return () => window.removeEventListener("newChat", handleNewChat);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [encryptedChat.clearSession]);
 
   // Handle session selection event
@@ -107,6 +109,7 @@ export function ChatWindow(): React.ReactElement {
 
     window.addEventListener("selectSession", handleSelectSession);
     return () => window.removeEventListener("selectSession", handleSelectSession);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [encryptedChat.loadSession]);
 
   // Auto-unlock org key when personal keys are unlocked and user has distributed key

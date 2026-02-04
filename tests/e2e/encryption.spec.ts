@@ -3,8 +3,6 @@ import { signInWithClerk } from './fixtures/auth.fixture.js';
 import {
   TEST_PASSCODE,
   clearActiveOrg,
-  setupEncryption,
-  unlockEncryption,
   ensureEncryptionReady
 } from './fixtures/encryption.fixture.js';
 

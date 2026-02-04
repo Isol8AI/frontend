@@ -3,15 +3,6 @@
 import { motion } from "framer-motion";
 import { Shield, Brain, Zap, Lock, Globe, Server } from "lucide-react";
 
-// Primary Split Features
-const primaryFeatures = [
-  {
-    title: "Intelligence, Isolated.",
-    description: "Every request is encrypted on your device and only decrypted inside a secure Nitro Enclave. We never see your data, and neither does the model provider.",
-    image: "bg-gradient-to-br from-blue-500/20 to-purple-500/20", 
-  }
-];
-
 // Secondary Grid Features
 const secondaryFeatures = [
   { icon: Lock, title: "Nitro Enclaves", desc: "Hardware-isolated execution environments for maximum security." },

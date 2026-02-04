@@ -15,7 +15,7 @@ import React, { useState } from 'react';
 import { useEncryption } from '@/hooks/useEncryption';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { AlertCircle, Key, Loader2, Shield, Building2 } from 'lucide-react';
+import { AlertCircle, Loader2, Shield, Building2 } from 'lucide-react';
 
 interface Props {
   orgId: string;
