@@ -6,10 +6,12 @@ import { useAuth, UserButton } from "@clerk/nextjs";
 import { Settings } from "lucide-react";
 
 import { Sidebar } from "@/components/chat/Sidebar";
+import { AgentCreateDialog } from "@/components/chat/AgentCreateDialog";
 import { OrganizationSwitcher } from "@/components/organization/OrganizationSwitcher";
 import { useOrgContext } from "@/components/providers/OrganizationProvider";
 import { useApi } from "@/lib/api";
 import { useSessions } from "@/hooks/useSessions";
+import { useAgents } from "@/hooks/useAgents";
 import { Button } from "@/components/ui/button";
 import {
   AlertDialog,
@@ -26,6 +28,8 @@ interface ChatLayoutProps {
   children: React.ReactNode;
 }
 
+type SidebarTab = 'chats' | 'agents';
+
 function dispatchNewChatEvent(): void {
   window.dispatchEvent(new CustomEvent("newChat"));
 }
@@ -34,13 +38,26 @@ function dispatchSelectSessionEvent(sessionId: string): void {
   window.dispatchEvent(new CustomEvent("selectSession", { detail: { sessionId } }));
 }
 
+function dispatchSelectAgentEvent(agentName: string): void {
+  window.dispatchEvent(new CustomEvent("selectAgent", { detail: { agentName } }));
+}
+
+function dispatchSelectChatsEvent(): void {
+  window.dispatchEvent(new CustomEvent("selectChats"));
+}
+
 export function ChatLayout({ children }: ChatLayoutProps): React.ReactElement {
   const { isSignedIn } = useAuth();
   const api = useApi();
   const { orgId, isPersonalContext, isOrgAdmin } = useOrgContext();
   const { sessions, isLoading: isLoadingSessions, refresh: refreshSessions, deleteSession } = useSessions();
+  const { agents, isLoading: isLoadingAgents, createAgent, deleteAgent } = useAgents();
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [sessionToDelete, setSessionToDelete] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<SidebarTab>('chats');
+  const [currentAgentName, setCurrentAgentName] = useState<string | null>(null);
+  const [agentToDelete, setAgentToDelete] = useState<string | null>(null);
+  const [showCreateAgent, setShowCreateAgent] = useState(false);
 
   // DEBUG: Log component mount/unmount
   useEffect(() => {
@@ -126,6 +143,44 @@ export function ChatLayout({ children }: ChatLayoutProps): React.ReactElement {
     }
   }, [sessionToDelete, currentSessionId, deleteSession]);
 
+  function handleTabChange(tab: SidebarTab): void {
+    setActiveTab(tab);
+    if (tab === 'chats') {
+      setCurrentAgentName(null);
+      dispatchSelectChatsEvent();
+    } else {
+      setCurrentSessionId(null);
+    }
+  }
+
+  function handleSelectAgent(agentName: string): void {
+    setCurrentAgentName(agentName);
+    setCurrentSessionId(null);
+    dispatchSelectAgentEvent(agentName);
+  }
+
+  const handleConfirmDeleteAgent = useCallback(async (): Promise<void> => {
+    if (!agentToDelete) return;
+
+    try {
+      await deleteAgent(agentToDelete);
+
+      if (agentToDelete === currentAgentName) {
+        setCurrentAgentName(null);
+      }
+    } catch (err) {
+      console.error("Failed to delete agent:", err);
+    } finally {
+      setAgentToDelete(null);
+    }
+  }, [agentToDelete, currentAgentName, deleteAgent]);
+
+  const handleCreateAgent = useCallback(async (name: string, soulContent?: string): Promise<void> => {
+    await createAgent(name, soulContent);
+    setCurrentAgentName(name);
+    dispatchSelectAgentEvent(name);
+  }, [createAgent]);
+
   return (
     <div className="flex h-screen bg-background text-foreground overflow-hidden relative selection:bg-primary/20">
       {/* Global Grain Overlay */}
@@ -160,6 +215,14 @@ export function ChatLayout({ children }: ChatLayoutProps): React.ReactElement {
             onNewChat={handleNewChat}
             onSelectSession={handleSelectSession}
             onDeleteSession={(id) => setSessionToDelete(id)}
+            activeTab={activeTab}
+            onTabChange={handleTabChange}
+            agents={agents}
+            currentAgentName={currentAgentName}
+            isLoadingAgents={isLoadingAgents}
+            onNewAgent={() => setShowCreateAgent(true)}
+            onSelectAgent={handleSelectAgent}
+            onDeleteAgent={(name) => setAgentToDelete(name)}
           />
         </div>
 
@@ -196,6 +259,29 @@ export function ChatLayout({ children }: ChatLayoutProps): React.ReactElement {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <AlertDialog open={!!agentToDelete} onOpenChange={(open) => !open && setAgentToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this agent?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete the agent &quot;{agentToDelete}&quot; and all its memory, personality, and conversation history. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmDeleteAgent} className="bg-red-600 hover:bg-red-700">
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AgentCreateDialog
+        open={showCreateAgent}
+        onOpenChange={setShowCreateAgent}
+        onCreateAgent={handleCreateAgent}
+      />
     </div>
   );
 }
