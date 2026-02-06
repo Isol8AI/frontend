@@ -379,7 +379,7 @@ export function useAgentChat(): UseAgentChatReturn {
       if (!encryption.state.enclavePublicKey) {
         throw new Error("Enclave public key not available");
       }
-      if (!encryption.state.privateKey) {
+      if (!encryption.getPrivateKey()) {
         throw new Error("User private key not available");
       }
 
@@ -463,7 +463,7 @@ export function useAgentChat(): UseAgentChatReturn {
               console.log("[AgentWS] Zero trust mode: decrypting and re-encrypting state");
 
               // 2. Decrypt state with user's private key
-              const { encryptToPublicKey, decryptWithPrivateKey } = await import(
+              const { encryptToPublicKey, decryptWithPrivateKey, hexToBytes } = await import(
                 "@/lib/crypto/primitives"
               );
 
@@ -484,7 +484,7 @@ export function useAgentChat(): UseAgentChatReturn {
               };
 
               const stateBytes = decryptWithPrivateKey(
-                encryption.state.privateKey,
+                hexToBytes(encryption.getPrivateKey()!),
                 statePayload,
                 "agent-state-storage"
               );
@@ -493,7 +493,7 @@ export function useAgentChat(): UseAgentChatReturn {
 
               // 3. Re-encrypt to enclave transport key
               const encryptedForEnclave = encryptToPublicKey(
-                encryption.state.enclavePublicKey,
+                hexToBytes(encryption.state.enclavePublicKey!),
                 stateBytes,
                 "client-to-enclave-transport"
               );

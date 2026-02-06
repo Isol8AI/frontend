@@ -45,10 +45,11 @@ export function useAgents() {
     const token = await getToken();
     if (!token) throw new Error("No auth token");
 
-    const body: { agent_name: string; soul_content?: string; model?: string } = {
+    // NOTE: soul_content is NOT sent here (plaintext over REST violates zero-trust).
+    // It is sent encrypted to the enclave in the first WebSocket agent_chat message.
+    const body: { agent_name: string; model?: string } = {
       agent_name: name,
     };
-    if (soulContent !== undefined) body.soul_content = soulContent;
     if (model !== undefined) body.model = model;
 
     const res = await fetch(`${BACKEND_URL}/agents`, {
