@@ -370,7 +370,7 @@ export function useAgentChat(): UseAgentChatReturn {
       soulContent?: string,
     ): Promise<void> => {
       console.log("\n" + "=".repeat(80));
-      console.log("[AgentWS] ENCRYPTED AGENT CHAT FLOW");
+      console.log("[AgentWS] ENCRYPTED AGENT CHAT FLOW (ZERO TRUST MODE)");
       console.log("=".repeat(80));
 
       if (!encryption.state.isUnlocked) {
@@ -378,6 +378,9 @@ export function useAgentChat(): UseAgentChatReturn {
       }
       if (!encryption.state.enclavePublicKey) {
         throw new Error("Enclave public key not available");
+      }
+      if (!encryption.state.privateKey) {
+        throw new Error("User private key not available");
       }
 
       // Clear previous error
@@ -436,6 +439,86 @@ export function useAgentChat(): UseAgentChatReturn {
         // Encrypt message to enclave
         const encryptedMessage = encryption.encryptMessage(content);
 
+        // ZERO TRUST MODE: Fetch, decrypt, and re-encrypt agent state
+        let encryptedStateForEnclave = null;
+
+        try {
+          // 1. Fetch agent state and encryption mode from server
+          const token = await getToken();
+          const stateResponse = await fetch(
+            `${BACKEND_URL}/agents/${agentName}/state`,
+            {
+              headers: {
+                Authorization: `Bearer ${token}`,
+              },
+            }
+          );
+
+          if (stateResponse.ok) {
+            const { encrypted_state, encryption_mode } = await stateResponse.json();
+
+            console.log(`[AgentWS] Agent encryption mode: ${encryption_mode}`);
+
+            if (encryption_mode === "zero_trust" && encrypted_state) {
+              console.log("[AgentWS] Zero trust mode: decrypting and re-encrypting state");
+
+              // 2. Decrypt state with user's private key
+              const { encryptToPublicKey, decryptWithPrivateKey } = await import(
+                "@/lib/crypto/primitives"
+              );
+
+              const statePayload = {
+                ephemeralPublicKey: new Uint8Array(
+                  Buffer.from(encrypted_state.ephemeral_public_key, "hex")
+                ),
+                iv: new Uint8Array(Buffer.from(encrypted_state.iv, "hex")),
+                ciphertext: new Uint8Array(
+                  Buffer.from(encrypted_state.ciphertext, "hex")
+                ),
+                authTag: new Uint8Array(
+                  Buffer.from(encrypted_state.auth_tag, "hex")
+                ),
+                hkdfSalt: new Uint8Array(
+                  Buffer.from(encrypted_state.hkdf_salt, "hex")
+                ),
+              };
+
+              const stateBytes = decryptWithPrivateKey(
+                encryption.state.privateKey,
+                statePayload,
+                "agent-state-storage"
+              );
+
+              console.log(`[AgentWS] Decrypted state: ${stateBytes.length} bytes`);
+
+              // 3. Re-encrypt to enclave transport key
+              const encryptedForEnclave = encryptToPublicKey(
+                encryption.state.enclavePublicKey,
+                stateBytes,
+                "client-to-enclave-transport"
+              );
+
+              // 4. Convert to serialized format for WebSocket
+              encryptedStateForEnclave = {
+                ephemeral_public_key: Buffer.from(
+                  encryptedForEnclave.ephemeralPublicKey
+                ).toString("hex"),
+                iv: Buffer.from(encryptedForEnclave.iv).toString("hex"),
+                ciphertext: Buffer.from(encryptedForEnclave.ciphertext).toString(
+                  "hex"
+                ),
+                auth_tag: Buffer.from(encryptedForEnclave.authTag).toString("hex"),
+                hkdf_salt: Buffer.from(encryptedForEnclave.hkdfSalt).toString("hex"),
+              };
+
+              console.log("[AgentWS] Re-encrypted state for enclave");
+            }
+          }
+        } catch (err) {
+          console.warn("[AgentWS] Failed to fetch/process agent state:", err);
+          // Continue without state - might be a new agent
+        }
+
         // Build WebSocket payload
         const payload: Record<string, unknown> = {
           type: "agent_chat",
@@ -444,11 +527,20 @@ export function useAgentChat(): UseAgentChatReturn {
           client_transport_public_key: transportKeypair.publicKey,
         };
 
+        // Include re-encrypted state for zero trust mode
+        if (encryptedStateForEnclave) {
+          payload.encrypted_state = encryptedStateForEnclave;
+        }
+
         // Encrypt and include soul content for new agents (first message only)
         if (soulContent) {
           payload.encrypted_soul_content =
             encryption.encryptMessage(soulContent);
         }
+
+        console.log(
+          `[AgentWS] Sending message with ${encryptedStateForEnclave ? "encrypted state" : "no state"}`
+        );
 
         wsRef.current!.send(JSON.stringify(payload));
       } catch (err) {
