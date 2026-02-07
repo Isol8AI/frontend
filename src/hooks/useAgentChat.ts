@@ -382,6 +382,9 @@ export function useAgentChat(): UseAgentChatReturn {
       if (!encryption.getPrivateKey()) {
         throw new Error("User private key not available");
       }
+      if (!encryption.state.publicKey) {
+        throw new Error("User public key not available");
+      }
 
       // Clear previous error
       setError(null);
@@ -525,6 +528,7 @@ export function useAgentChat(): UseAgentChatReturn {
           agent_name: agentName,
           encrypted_message: encryptedMessage,
           client_transport_public_key: transportKeypair.publicKey,
+          user_public_key: encryption.state.publicKey,
         };
 
         // Include re-encrypted state for zero trust mode
