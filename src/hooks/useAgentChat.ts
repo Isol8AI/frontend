@@ -466,9 +466,29 @@ export function useAgentChat(): UseAgentChatReturn {
               console.log("[AgentWS] Zero trust mode: decrypting and re-encrypting state");
 
               // 2. Decrypt state with user's private key
-              const { encryptToPublicKey, decryptWithPrivateKey, hexToBytes } = await import(
+              const { encryptToPublicKey, decryptWithPrivateKey, hexToBytes, bytesToHex, deriveKeyFromEcdh } = await import(
                 "@/lib/crypto/primitives"
               );
+              const { x25519 } = await import("@noble/curves/ed25519");
+
+              const privateKeyHex = encryption.getPrivateKey()!;
+              const privateKeyBytes = hexToBytes(privateKeyHex);
+
+              // DEBUG: derive public key from private key and compare
+              const derivedPubKey = x25519.getPublicKey(privateKeyBytes);
+              const derivedPubKeyHex = bytesToHex(derivedPubKey);
+              const storedPubKeyHex = encryption.state.publicKey;
+              console.log(`[AgentWS] DEBUG: privateKey=${privateKeyHex.substring(0, 16)}...`);
+              console.log(`[AgentWS] DEBUG: derivedPubKey=${derivedPubKeyHex.substring(0, 16)}...`);
+              console.log(`[AgentWS] DEBUG: storedPubKey=${storedPubKeyHex?.substring(0, 16)}...`);
+              console.log(`[AgentWS] DEBUG: pubKeyMatch=${derivedPubKeyHex === storedPubKeyHex}`);
+
+              // DEBUG: log the exact encrypted state fields
+              console.log(`[AgentWS] DEBUG: state.ephemeral_public_key=${encrypted_state.ephemeral_public_key?.substring(0, 16)}...`);
+              console.log(`[AgentWS] DEBUG: state.iv=${encrypted_state.iv}`);
+              console.log(`[AgentWS] DEBUG: state.ciphertext_len=${encrypted_state.ciphertext?.length / 2}`);
+              console.log(`[AgentWS] DEBUG: state.auth_tag=${encrypted_state.auth_tag}`);
+              console.log(`[AgentWS] DEBUG: state.hkdf_salt=${encrypted_state.hkdf_salt?.substring(0, 16)}...`);
 
               const statePayload = {
                 ephemeralPublicKey: new Uint8Array(
@@ -486,8 +506,18 @@ export function useAgentChat(): UseAgentChatReturn {
                 ),
               };
 
+              // DEBUG: verify parsed field lengths
+              console.log(`[AgentWS] DEBUG: parsed ephPubKey.len=${statePayload.ephemeralPublicKey.length}, iv.len=${statePayload.iv.length}, ct.len=${statePayload.ciphertext.length}, tag.len=${statePayload.authTag.length}, salt.len=${statePayload.hkdfSalt.length}`);
+
+              // DEBUG: manually do ECDH and log the shared secret
+              const sharedSecret = x25519.getSharedSecret(privateKeyBytes, statePayload.ephemeralPublicKey);
+              console.log(`[AgentWS] DEBUG: sharedSecret=${bytesToHex(sharedSecret).substring(0, 32)}...`);
+
+              const { derivedKey } = deriveKeyFromEcdh(privateKeyBytes, statePayload.ephemeralPublicKey, "agent-state-storage", statePayload.hkdfSalt);
+              console.log(`[AgentWS] DEBUG: derivedKey=${bytesToHex(derivedKey).substring(0, 32)}...`);
+
               const stateBytes = decryptWithPrivateKey(
-                hexToBytes(encryption.getPrivateKey()!),
+                privateKeyBytes,
                 statePayload,
                 "agent-state-storage"
               );
