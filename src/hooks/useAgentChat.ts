@@ -483,12 +483,12 @@ export function useAgentChat(): UseAgentChatReturn {
               console.log(`[AgentWS] DEBUG: storedPubKey=${storedPubKeyHex?.substring(0, 16)}...`);
               console.log(`[AgentWS] DEBUG: pubKeyMatch=${derivedPubKeyHex === storedPubKeyHex}`);
 
-              // DEBUG: log the exact encrypted state fields
-              console.log(`[AgentWS] DEBUG: state.ephemeral_public_key=${encrypted_state.ephemeral_public_key?.substring(0, 16)}...`);
-              console.log(`[AgentWS] DEBUG: state.iv=${encrypted_state.iv}`);
-              console.log(`[AgentWS] DEBUG: state.ciphertext_len=${encrypted_state.ciphertext?.length / 2}`);
-              console.log(`[AgentWS] DEBUG: state.auth_tag=${encrypted_state.auth_tag}`);
-              console.log(`[AgentWS] DEBUG: state.hkdf_salt=${encrypted_state.hkdf_salt?.substring(0, 16)}...`);
+              // TRACE_CRYPTO: Log FULL hex strings for every field (no truncation)
+              console.log(`TRACE_CRYPTO:FRONTEND_RECV eph_pub=${encrypted_state.ephemeral_public_key}`);
+              console.log(`TRACE_CRYPTO:FRONTEND_RECV iv=${encrypted_state.iv}`);
+              console.log(`TRACE_CRYPTO:FRONTEND_RECV ct_hex_len=${encrypted_state.ciphertext?.length}`);
+              console.log(`TRACE_CRYPTO:FRONTEND_RECV auth_tag=${encrypted_state.auth_tag}`);
+              console.log(`TRACE_CRYPTO:FRONTEND_RECV hkdf_salt=${encrypted_state.hkdf_salt}`);
 
               const statePayload = {
                 ephemeralPublicKey: new Uint8Array(
@@ -506,15 +506,25 @@ export function useAgentChat(): UseAgentChatReturn {
                 ),
               };
 
-              // DEBUG: verify parsed field lengths
-              console.log(`[AgentWS] DEBUG: parsed ephPubKey.len=${statePayload.ephemeralPublicKey.length}, iv.len=${statePayload.iv.length}, ct.len=${statePayload.ciphertext.length}, tag.len=${statePayload.authTag.length}, salt.len=${statePayload.hkdfSalt.length}`);
+              // TRACE_CRYPTO: verify parsed field lengths
+              console.log(`TRACE_CRYPTO:FRONTEND_PARSED ephPubKey.len=${statePayload.ephemeralPublicKey.length}, iv.len=${statePayload.iv.length}, ct.len=${statePayload.ciphertext.length}, tag.len=${statePayload.authTag.length}, salt.len=${statePayload.hkdfSalt.length}`);
 
-              // DEBUG: manually do ECDH and log the shared secret
+              // TRACE_CRYPTO: Compute SHA256 of ciphertext for comparison with backend
+              crypto.subtle.digest('SHA-256', statePayload.ciphertext).then(hash => {
+                const ctSha256 = Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
+                console.log(`TRACE_CRYPTO:FRONTEND_CT_SHA256 ct_sha256=${ctSha256} ct_len=${statePayload.ciphertext.length}`);
+              });
+
+              // TRACE_CRYPTO: manually do ECDH and log the FULL shared secret and derived key
               const sharedSecret = x25519.getSharedSecret(privateKeyBytes, statePayload.ephemeralPublicKey);
-              console.log(`[AgentWS] DEBUG: sharedSecret=${bytesToHex(sharedSecret).substring(0, 32)}...`);
+              console.log(`TRACE_CRYPTO:FRONTEND_ECDH shared_secret=${bytesToHex(sharedSecret)}`);
 
               const { derivedKey } = deriveKeyFromEcdh(privateKeyBytes, statePayload.ephemeralPublicKey, "agent-state-storage", statePayload.hkdfSalt);
-              console.log(`[AgentWS] DEBUG: derivedKey=${bytesToHex(derivedKey).substring(0, 32)}...`);
+              console.log(`TRACE_CRYPTO:FRONTEND_HKDF derived_key=${bytesToHex(derivedKey)}`);
+
+              // TRACE_CRYPTO: Log private key and public key (full, dev only)
+              console.log(`TRACE_CRYPTO:FRONTEND_KEYS private_key=${privateKeyHex}`);
+              console.log(`TRACE_CRYPTO:FRONTEND_KEYS public_key=${derivedPubKeyHex}`);
 
               const stateBytes = decryptWithPrivateKey(
                 privateKeyBytes,
