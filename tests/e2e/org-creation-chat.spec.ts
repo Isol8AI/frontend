@@ -1,8 +1,7 @@
-import { test, expect, Page } from '@playwright/test';
+import { test, expect } from '@playwright/test';
 import { signInWithClerk } from './fixtures/auth.fixture.js';
 import {
   ensureEncryptionReady,
-  unlockEncryption,
   setActiveOrg,
   clearActiveOrg,
   createOrganization,

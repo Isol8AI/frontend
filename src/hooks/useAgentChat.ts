@@ -611,7 +611,7 @@ export function useAgentChat(): UseAgentChatReturn {
         fullContentRef.current = "";
       }
     },
-    [encryption, connect],
+    [encryption, connect, getToken],
   );
 
   // =============================================================================
