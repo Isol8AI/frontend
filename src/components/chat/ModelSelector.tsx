@@ -182,7 +182,7 @@ export function ModelSelector({
         side="bottom"
         sideOffset={8}
         collisionPadding={16}
-        className="w-[320px] max-h-[320px] p-0 bg-[#111111] border-white/10 text-white shadow-2xl flex flex-col"
+        className="!w-[320px] !max-h-[320px] !p-0 !bg-[#111111] border-white/10 text-white shadow-2xl flex flex-col overflow-hidden"
       >
         {/* Search header */}
         <div className="p-3 border-b border-white/10 shrink-0">
