@@ -197,10 +197,18 @@ export function ModelSelector({
           </div>
         </div>
 
-        {/* Scrollable provider groups */}
+        {/* Scrollable provider groups — onWheel captures trackpad events that Radix Popover would otherwise swallow */}
         <div
           className="overflow-y-auto overscroll-contain [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-white/20 [&::-webkit-scrollbar-thumb]:rounded-full"
           style={{ maxHeight: 240 }}
+          onWheel={(e) => {
+            const el = e.currentTarget;
+            const atTop = el.scrollTop === 0 && e.deltaY < 0;
+            const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight && e.deltaY > 0;
+            if (!atTop && !atBottom) {
+              e.stopPropagation();
+            }
+          }}
         >
             <div className="py-1">
             {groups.length === 0 ? (
