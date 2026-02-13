@@ -171,7 +171,10 @@ describe('ModelSelector', () => {
       await user.type(searchInput, 'haiku');
 
       expect(screen.getByText('Claude 3.5 Haiku')).toBeInTheDocument();
-      expect(screen.queryByText('Claude 3.5 Sonnet')).not.toBeInTheDocument();
+      // Sonnet still appears in the trigger button, but should not appear as a dropdown row
+      // Only 1 instance of "Claude 3.5 Sonnet" should remain (the trigger)
+      const sonnetElements = screen.getAllByText('Claude 3.5 Sonnet');
+      expect(sonnetElements).toHaveLength(1); // only the trigger button
     });
 
     it('shows no models found when search has no matches', async () => {
