@@ -6,7 +6,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -198,8 +197,11 @@ export function ModelSelector({
           </div>
         </div>
 
-        {/* Scrollable provider groups — explicit height on ScrollArea so Viewport's h-full resolves correctly */}
-          <ScrollArea className="overflow-hidden" style={{ maxHeight: 240 }}>
+        {/* Scrollable provider groups */}
+        <div
+          className="overflow-y-auto overscroll-contain [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-white/20 [&::-webkit-scrollbar-thumb]:rounded-full"
+          style={{ maxHeight: 240 }}
+        >
             <div className="py-1">
             {groups.length === 0 ? (
               <div className="px-4 py-8 text-center text-sm text-white/30">
@@ -268,7 +270,7 @@ export function ModelSelector({
               })
             )}
             </div>
-          </ScrollArea>
+        </div>
 
         {/* Footer */}
         <div className="p-2 border-t border-white/10 bg-white/[0.02] shrink-0">
