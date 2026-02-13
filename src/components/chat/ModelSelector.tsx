@@ -198,9 +198,8 @@ export function ModelSelector({
           </div>
         </div>
 
-        {/* Scrollable provider groups — wrapper bounds height, ScrollArea handles trackpad + visible scrollbar */}
-        <div style={{ maxHeight: 240, overflow: "hidden" }}>
-          <ScrollArea className="h-full">
+        {/* Scrollable provider groups — explicit height on ScrollArea so Viewport's h-full resolves correctly */}
+          <ScrollArea className="overflow-hidden" style={{ maxHeight: 240 }}>
             <div className="py-1">
             {groups.length === 0 ? (
               <div className="px-4 py-8 text-center text-sm text-white/30">
@@ -270,7 +269,6 @@ export function ModelSelector({
             )}
             </div>
           </ScrollArea>
-        </div>
 
         {/* Footer */}
         <div className="p-2 border-t border-white/10 bg-white/[0.02] shrink-0">
