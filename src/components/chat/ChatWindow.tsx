@@ -150,6 +150,16 @@ export function ChatWindow(): React.ReactElement {
     }
   }, [encryptedChat, selectedModel, isEncryptionReady]);
 
+  // Handle retrying a failed assistant message
+  const handleRetry = useCallback(async (assistantMsgId: string): Promise<void> => {
+    if (!isEncryptionReady) return;
+    try {
+      await encryptedChat.retryMessage?.(assistantMsgId, selectedModel);
+    } catch (err) {
+      console.error("Failed to retry message:", err);
+    }
+  }, [encryptedChat, selectedModel, isEncryptionReady]);
+
   // Convert ChatMessage to Message[] for MessageList
   // Memoized to prevent unnecessary re-renders when parent state changes
   const messages: Message[] = useMemo(() =>
@@ -324,7 +334,7 @@ export function ChatWindow(): React.ReactElement {
         </div>
         <div className="flex-1 flex flex-col">
           {messages.length > 0 && (
-            <MessageList messages={messages} isTyping={isTyping} />
+            <MessageList messages={messages} isTyping={isTyping} onRetry={handleRetry} />
           )}
           <div
             className="p-4 m-4 bg-red-900/20 text-red-300 rounded-lg"
@@ -404,7 +414,7 @@ export function ChatWindow(): React.ReactElement {
           </div>
         </div>
       ) : (
-        <MessageList messages={messages} isTyping={isTyping} />
+        <MessageList messages={messages} isTyping={isTyping} onRetry={handleRetry} />
       )}
       <ChatInput
         onSend={handleSend}

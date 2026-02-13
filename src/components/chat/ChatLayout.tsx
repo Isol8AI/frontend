@@ -195,8 +195,12 @@ export function ChatLayout({ children }: ChatLayoutProps): React.ReactElement {
   }, [agentToDelete, currentAgentName, deleteAgent]);
 
   const handleCreateAgent = useCallback(
-    async (name: string, soulContent?: string): Promise<void> => {
-      await createAgent(name, soulContent);
+    async (
+      name: string,
+      soulContent?: string,
+      encryptionMode?: "zero_trust" | "background",
+    ): Promise<void> => {
+      await createAgent(name, soulContent, undefined, encryptionMode);
       setCurrentAgentName(name);
       dispatchSelectAgentEvent(name, soulContent);
     },

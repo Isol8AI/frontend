@@ -620,56 +620,12 @@ export function useChatWebSocket(options: UseChatOptions = {}): UseChatReturn {
   // Send Message
   // =============================================================================
 
-  const sendMessage = useCallback(
-    async (content: string, model: string): Promise<void> => {
-      console.log('\n' + '='.repeat(80));
-      console.log('[WS] ENCRYPTED CHAT FLOW - FRONTEND');
-      console.log('='.repeat(80));
+  // =============================================================================
+  // Core Send Logic (shared by sendMessage and retryMessage)
+  // =============================================================================
 
-      // In org context, need org key unlocked; in personal context, need personal key
-      if (isOrgContext) {
-        if (!encryption.isOrgUnlocked) {
-          throw new Error('Organization encryption keys not unlocked');
-        }
-      } else {
-        if (!encryption.state.isUnlocked) {
-          throw new Error('Encryption keys not unlocked');
-        }
-      }
-      if (!encryption.state.enclavePublicKey) {
-        throw new Error('Enclave public key not available');
-      }
-
-      // Clear previous error
-      setError(null);
-
-      // Create placeholder messages
-      const userMsgId = `user-${Date.now()}`;
-      const assistantMsgId = `assistant-${Date.now()}`;
-
-      const userMessage: ChatMessage = {
-        id: userMsgId,
-        role: 'user',
-        content,
-      };
-
-      const assistantMessage: ChatMessage = {
-        id: assistantMsgId,
-        role: 'assistant',
-        content: '',
-        model: model,
-        isStreaming: true,
-      };
-
-      // Store assistant message ID for updates BEFORE state update
-      // This prevents race condition where early streaming chunks arrive
-      // before the ref is set, causing updates to fail
-      currentAssistantMsgIdRef.current = assistantMsgId;
-      fullContentRef.current = '';
-
-      setMessages((prev) => [...prev, userMessage, assistantMessage]);
-      setIsStreaming(true);
-
+  const performSend = useCallback(
+    async (content: string, model: string, assistantMsgId: string): Promise<void> => {
       try {
         // Ensure WebSocket is connected
         if (wsRef.current?.readyState !== WebSocket.OPEN) {
@@ -750,6 +706,117 @@ export function useChatWebSocket(options: UseChatOptions = {}): UseChatReturn {
     [encryption, messages, sessionId, isOrgContext, orgId, connect]
   );
 
+  const sendMessage = useCallback(
+    async (content: string, model: string): Promise<void> => {
+      console.log('\n' + '='.repeat(80));
+      console.log('[WS] ENCRYPTED CHAT FLOW - FRONTEND');
+      console.log('='.repeat(80));
+
+      // In org context, need org key unlocked; in personal context, need personal key
+      if (isOrgContext) {
+        if (!encryption.isOrgUnlocked) {
+          throw new Error('Organization encryption keys not unlocked');
+        }
+      } else {
+        if (!encryption.state.isUnlocked) {
+          throw new Error('Encryption keys not unlocked');
+        }
+      }
+      if (!encryption.state.enclavePublicKey) {
+        throw new Error('Enclave public key not available');
+      }
+
+      // Clear previous error
+      setError(null);
+
+      // Create placeholder messages
+      const userMsgId = `user-${Date.now()}`;
+      const assistantMsgId = `assistant-${Date.now()}`;
+
+      const userMessage: ChatMessage = {
+        id: userMsgId,
+        role: 'user',
+        content,
+      };
+
+      const assistantMessage: ChatMessage = {
+        id: assistantMsgId,
+        role: 'assistant',
+        content: '',
+        model: model,
+        isStreaming: true,
+      };
+
+      // Store assistant message ID for updates BEFORE state update
+      // This prevents race condition where early streaming chunks arrive
+      // before the ref is set, causing updates to fail
+      currentAssistantMsgIdRef.current = assistantMsgId;
+      fullContentRef.current = '';
+
+      setMessages((prev) => [...prev, userMessage, assistantMessage]);
+      setIsStreaming(true);
+
+      await performSend(content, model, assistantMsgId);
+    },
+    [encryption, isOrgContext, performSend]
+  );
+
+  // =============================================================================
+  // Retry Failed Message
+  // =============================================================================
+
+  const retryMessage = useCallback(
+    async (assistantMsgId: string, fallbackModel?: string): Promise<void> => {
+      // Prevent double-click while streaming
+      if (isStreaming) return;
+
+      // Validate encryption state
+      if (isOrgContext) {
+        if (!encryption.isOrgUnlocked) {
+          throw new Error('Organization encryption keys not unlocked');
+        }
+      } else {
+        if (!encryption.state.isUnlocked) {
+          throw new Error('Encryption keys not unlocked');
+        }
+      }
+      if (!encryption.state.enclavePublicKey) {
+        throw new Error('Enclave public key not available');
+      }
+
+      // Find the error assistant message and the preceding user message
+      const assistantIdx = messages.findIndex((m) => m.id === assistantMsgId);
+      if (assistantIdx < 1) return;
+
+      const assistantMsg = messages[assistantIdx];
+      const userMsg = messages[assistantIdx - 1];
+
+      // Validate: assistant has error content, previous message is user
+      if (!assistantMsg.content.startsWith('Error: ') || userMsg.role !== 'user') return;
+
+      const userContent = userMsg.content;
+      const model = assistantMsg.model || fallbackModel || '';
+
+      // Reset assistant message inline for retry
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === assistantMsgId
+            ? { ...msg, content: '', isStreaming: true, thinking: undefined }
+            : msg
+        )
+      );
+
+      // Set refs for streaming updates
+      currentAssistantMsgIdRef.current = assistantMsgId;
+      fullContentRef.current = '';
+      setIsStreaming(true);
+      setError(null);
+
+      await performSend(userContent, model, assistantMsgId);
+    },
+    [encryption, isOrgContext, isStreaming, messages, performSend]
+  );
+
   // =============================================================================
   // Clear Session
   // =============================================================================
@@ -827,6 +894,7 @@ export function useChatWebSocket(options: UseChatOptions = {}): UseChatReturn {
     isLoadingSession,
     error,
     sendMessage,
+    retryMessage,
     loadSession,
     clearSession,
     invalidateSessionCache,

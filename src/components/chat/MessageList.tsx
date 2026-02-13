@@ -15,6 +15,7 @@ interface Message {
 interface MessageListProps {
   messages: Message[];
   isTyping?: boolean;
+  onRetry?: (assistantMsgId: string) => void;
 }
 
 function ThinkingBlock({ content }: { content: string }) {
@@ -62,7 +63,25 @@ function MessageToolbar({ modelName }: { modelName?: string }) {
     );
 }
 
-export function MessageList({ messages, isTyping }: MessageListProps) {
+function ErrorToolbar({ messageId, onRetry }: { messageId: string; onRetry?: (id: string) => void }) {
+    return (
+        <div className="flex items-center gap-2 mb-2">
+            <span className="text-xs font-medium text-red-400">Failed to generate</span>
+            {onRetry && (
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6 text-red-400 hover:text-white hover:bg-white/10"
+                    onClick={() => onRetry(messageId)}
+                >
+                    <RefreshCw className="h-3 w-3" />
+                </Button>
+            )}
+        </div>
+    );
+}
+
+export function MessageList({ messages, isTyping, onRetry }: MessageListProps) {
   const { containerRef, endRef } = useScrollToBottom();
 
   return (
@@ -80,7 +99,11 @@ export function MessageList({ messages, isTyping }: MessageListProps) {
               msg.role === "user" ? "items-end" : "items-start"
             )}
           >
-            {msg.role === "assistant" && <MessageToolbar modelName={msg.model} />}
+            {msg.role === "assistant" && (
+              msg.content.startsWith("Error: ")
+                ? <ErrorToolbar messageId={msg.id} onRetry={onRetry} />
+                : <MessageToolbar modelName={msg.model} />
+            )}
 
             <div
               className={cn(
@@ -93,15 +116,20 @@ export function MessageList({ messages, isTyping }: MessageListProps) {
               {msg.role === "assistant" && msg.thinking && (
                  <ThinkingBlock content={msg.thinking} />
               )}
-              
-              <div className="whitespace-pre-wrap">
-                {msg.content || (isTyping && msg.role === "assistant" && !msg.thinking ? (
-                  <span className="inline-flex gap-1 items-center h-5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-white/40 animate-bounce" style={{ animationDelay: '0ms' }} />
-                    <span className="w-1.5 h-1.5 rounded-full bg-white/40 animate-bounce" style={{ animationDelay: '150ms' }} />
-                    <span className="w-1.5 h-1.5 rounded-full bg-white/40 animate-bounce" style={{ animationDelay: '300ms' }} />
-                  </span>
-                ) : null)}
+
+              <div className={cn(
+                "whitespace-pre-wrap",
+                msg.role === "assistant" && msg.content.startsWith("Error: ") && "text-red-400/80"
+              )}>
+                {msg.role === "assistant" && msg.content.startsWith("Error: ")
+                  ? msg.content.slice(7)
+                  : msg.content || (isTyping && msg.role === "assistant" && !msg.thinking ? (
+                      <span className="inline-flex gap-1 items-center h-5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-white/40 animate-bounce" style={{ animationDelay: '0ms' }} />
+                        <span className="w-1.5 h-1.5 rounded-full bg-white/40 animate-bounce" style={{ animationDelay: '150ms' }} />
+                        <span className="w-1.5 h-1.5 rounded-full bg-white/40 animate-bounce" style={{ animationDelay: '300ms' }} />
+                      </span>
+                    ) : null)}
               </div>
             </div>
           </div>

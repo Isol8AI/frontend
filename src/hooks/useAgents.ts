@@ -41,14 +41,20 @@ export function useAgents() {
     }
   );
 
-  const createAgent = useCallback(async (name: string, soulContent?: string, model?: string) => {
+  const createAgent = useCallback(async (
+    name: string,
+    soulContent?: string,
+    model?: string,
+    encryptionMode: "zero_trust" | "background" = "zero_trust",
+  ) => {
     const token = await getToken();
     if (!token) throw new Error("No auth token");
 
     // NOTE: soul_content is NOT sent here (plaintext over REST violates zero-trust).
     // It is sent encrypted to the enclave in the first WebSocket agent_chat message.
-    const body: { agent_name: string; model?: string } = {
+    const body: { agent_name: string; model?: string; encryption_mode: string } = {
       agent_name: name,
+      encryption_mode: encryptionMode,
     };
     if (model !== undefined) body.model = model;
 

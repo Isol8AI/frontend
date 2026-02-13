@@ -72,6 +72,8 @@ export interface UseChatReturn {
   clearSession: () => void;
   /** Invalidate cache for a specific session (e.g., when deleted) */
   invalidateSessionCache?: (sessionId: string) => void;
+  /** Retry a failed assistant message by re-sending the preceding user message */
+  retryMessage?: (assistantMsgId: string, fallbackModel?: string) => Promise<void>;
   /** Abort current streaming request */
   abort: () => void;
 }

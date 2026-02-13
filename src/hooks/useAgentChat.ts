@@ -369,10 +369,6 @@ export function useAgentChat(): UseAgentChatReturn {
       content: string,
       soulContent?: string,
     ): Promise<void> => {
-      console.log("\n" + "=".repeat(80));
-      console.log("[AgentWS] ENCRYPTED AGENT CHAT FLOW (ZERO TRUST MODE)");
-      console.log("=".repeat(80));
-
       if (!encryption.state.isUnlocked) {
         throw new Error("Encryption keys not unlocked");
       }
@@ -442,11 +438,10 @@ export function useAgentChat(): UseAgentChatReturn {
         // Encrypt message to enclave
         const encryptedMessage = encryption.encryptMessage(content);
 
-        // ZERO TRUST MODE: Fetch, decrypt, and re-encrypt agent state
+        // Fetch agent state and handle based on encryption mode
         let encryptedStateForEnclave = null;
 
         try {
-          // 1. Fetch agent state and encryption mode from server
           const token = await getToken();
           const stateResponse = await fetch(
             `${BACKEND_URL}/agents/${agentName}/state`,
@@ -460,35 +455,14 @@ export function useAgentChat(): UseAgentChatReturn {
           if (stateResponse.ok) {
             const { encrypted_state, encryption_mode } = await stateResponse.json();
 
-            console.log(`[AgentWS] Agent encryption mode: ${encryption_mode}`);
-
             if (encryption_mode === "zero_trust" && encrypted_state) {
-              console.log("[AgentWS] Zero trust mode: decrypting and re-encrypting state");
-
-              // 2. Decrypt state with user's private key
-              const { encryptToPublicKey, decryptWithPrivateKey, hexToBytes, bytesToHex, deriveKeyFromEcdh } = await import(
+              // Zero trust: client decrypts state, re-encrypts to enclave transport key
+              const { encryptToPublicKey, decryptWithPrivateKey, hexToBytes } = await import(
                 "@/lib/crypto/primitives"
               );
-              const { x25519 } = await import("@noble/curves/ed25519");
 
               const privateKeyHex = encryption.getPrivateKey()!;
               const privateKeyBytes = hexToBytes(privateKeyHex);
-
-              // DEBUG: derive public key from private key and compare
-              const derivedPubKey = x25519.getPublicKey(privateKeyBytes);
-              const derivedPubKeyHex = bytesToHex(derivedPubKey);
-              const storedPubKeyHex = encryption.state.publicKey;
-              console.log(`[AgentWS] DEBUG: privateKey=${privateKeyHex.substring(0, 16)}...`);
-              console.log(`[AgentWS] DEBUG: derivedPubKey=${derivedPubKeyHex.substring(0, 16)}...`);
-              console.log(`[AgentWS] DEBUG: storedPubKey=${storedPubKeyHex?.substring(0, 16)}...`);
-              console.log(`[AgentWS] DEBUG: pubKeyMatch=${derivedPubKeyHex === storedPubKeyHex}`);
-
-              // TRACE_CRYPTO: Log FULL hex strings for every field (no truncation)
-              console.log(`TRACE_CRYPTO:FRONTEND_RECV eph_pub=${encrypted_state.ephemeral_public_key}`);
-              console.log(`TRACE_CRYPTO:FRONTEND_RECV iv=${encrypted_state.iv}`);
-              console.log(`TRACE_CRYPTO:FRONTEND_RECV ct_hex_len=${encrypted_state.ciphertext?.length}`);
-              console.log(`TRACE_CRYPTO:FRONTEND_RECV auth_tag=${encrypted_state.auth_tag}`);
-              console.log(`TRACE_CRYPTO:FRONTEND_RECV hkdf_salt=${encrypted_state.hkdf_salt}`);
 
               const statePayload = {
                 ephemeralPublicKey: new Uint8Array(
@@ -506,42 +480,19 @@ export function useAgentChat(): UseAgentChatReturn {
                 ),
               };
 
-              // TRACE_CRYPTO: verify parsed field lengths
-              console.log(`TRACE_CRYPTO:FRONTEND_PARSED ephPubKey.len=${statePayload.ephemeralPublicKey.length}, iv.len=${statePayload.iv.length}, ct.len=${statePayload.ciphertext.length}, tag.len=${statePayload.authTag.length}, salt.len=${statePayload.hkdfSalt.length}`);
-
-              // TRACE_CRYPTO: Compute SHA256 of ciphertext for comparison with backend
-              crypto.subtle.digest('SHA-256', statePayload.ciphertext).then(hash => {
-                const ctSha256 = Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
-                console.log(`TRACE_CRYPTO:FRONTEND_CT_SHA256 ct_sha256=${ctSha256} ct_len=${statePayload.ciphertext.length}`);
-              });
-
-              // TRACE_CRYPTO: manually do ECDH and log the FULL shared secret and derived key
-              const sharedSecret = x25519.getSharedSecret(privateKeyBytes, statePayload.ephemeralPublicKey);
-              console.log(`TRACE_CRYPTO:FRONTEND_ECDH shared_secret=${bytesToHex(sharedSecret)}`);
-
-              const { derivedKey } = deriveKeyFromEcdh(privateKeyBytes, statePayload.ephemeralPublicKey, "agent-state-storage", statePayload.hkdfSalt);
-              console.log(`TRACE_CRYPTO:FRONTEND_HKDF derived_key=${bytesToHex(derivedKey)}`);
-
-              // TRACE_CRYPTO: Log private key and public key (full, dev only)
-              console.log(`TRACE_CRYPTO:FRONTEND_KEYS private_key=${privateKeyHex}`);
-              console.log(`TRACE_CRYPTO:FRONTEND_KEYS public_key=${derivedPubKeyHex}`);
-
               const stateBytes = decryptWithPrivateKey(
                 privateKeyBytes,
                 statePayload,
                 "agent-state-storage"
               );
 
-              console.log(`[AgentWS] Decrypted state: ${stateBytes.length} bytes`);
-
-              // 3. Re-encrypt to enclave transport key
+              // Re-encrypt to enclave transport key
               const encryptedForEnclave = encryptToPublicKey(
                 hexToBytes(encryption.state.enclavePublicKey!),
                 stateBytes,
                 "client-to-enclave-transport"
               );
 
-              // 4. Convert to serialized format for WebSocket
               encryptedStateForEnclave = {
                 ephemeral_public_key: Buffer.from(
                   encryptedForEnclave.ephemeralPublicKey
@@ -553,9 +504,9 @@ export function useAgentChat(): UseAgentChatReturn {
                 auth_tag: Buffer.from(encryptedForEnclave.authTag).toString("hex"),
                 hkdf_salt: Buffer.from(encryptedForEnclave.hkdfSalt).toString("hex"),
               };
-
-              console.log("[AgentWS] Re-encrypted state for enclave");
             }
+            // Background mode: no client-side state handling needed.
+            // The backend fetches KMS-encrypted state and sends it to the enclave directly.
           }
         } catch (err) {
           console.warn("[AgentWS] Failed to fetch/process agent state:", err);
@@ -581,10 +532,6 @@ export function useAgentChat(): UseAgentChatReturn {
           payload.encrypted_soul_content =
             encryption.encryptMessage(soulContent);
         }
-
-        console.log(
-          `[AgentWS] Sending message with ${encryptedStateForEnclave ? "encrypted state" : "no state"}`
-        );
 
         wsRef.current!.send(JSON.stringify(payload));
       } catch (err) {
