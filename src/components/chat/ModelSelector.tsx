@@ -8,18 +8,23 @@ import {
 } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { ChevronDown, ChevronRight, Search, Cpu } from "lucide-react";
 import {
-  ChevronDown,
-  ChevronRight,
-  Search,
-  Sparkles,
-  Globe,
-  Cloud,
-  Zap,
-  Brain,
-  Bot,
-  Cpu,
-} from "lucide-react";
+  Ai21,
+  Anthropic,
+  Aws,
+  Cohere,
+  DeepSeek,
+  Google,
+  Meta,
+  Minimax,
+  Mistral,
+  Moonshot,
+  Nvidia,
+  OpenAI,
+  Qwen,
+  Zhipu,
+} from "@lobehub/icons";
 import { cn } from "@/lib/utils";
 
 interface Model {
@@ -37,16 +42,26 @@ interface ModelSelectorProps {
 interface ProviderConfig {
   displayName: string;
   icon: React.ElementType;
-  accentColor: string;
+  brandColor: string;
 }
 
 const PROVIDER_CONFIG: Record<string, ProviderConfig> = {
-  anthropic: { displayName: "Anthropic", icon: Sparkles, accentColor: "text-orange-400" },
-  meta: { displayName: "Meta", icon: Globe, accentColor: "text-blue-400" },
-  amazon: { displayName: "Amazon", icon: Cloud, accentColor: "text-amber-400" },
-  mistral: { displayName: "Mistral", icon: Zap, accentColor: "text-cyan-400" },
-  cohere: { displayName: "Cohere", icon: Brain, accentColor: "text-green-400" },
-  ai21: { displayName: "AI21", icon: Bot, accentColor: "text-purple-400" },
+  ai21: { displayName: "AI21", icon: Ai21, brandColor: "#E91E63" },
+  amazon: { displayName: "Amazon", icon: Aws, brandColor: "#FF9900" },
+  anthropic: { displayName: "Anthropic", icon: Anthropic, brandColor: "#D4A574" },
+  cohere: { displayName: "Cohere", icon: Cohere, brandColor: "#39594D" },
+  deepseek: { displayName: "DeepSeek", icon: DeepSeek, brandColor: "#4D6BFE" },
+  "glm-4": { displayName: "Zhipu AI", icon: Zhipu, brandColor: "#3859FF" },
+  google: { displayName: "Google", icon: Google, brandColor: "#4285F4" },
+  meta: { displayName: "Meta", icon: Meta, brandColor: "#0082FB" },
+  minimax: { displayName: "Minimax", icon: Minimax, brandColor: "#F23F5D" },
+  mistral: { displayName: "Mistral", icon: Mistral, brandColor: "#FA520F" },
+  moonshot: { displayName: "Moonshot", icon: Moonshot, brandColor: "#8B8BF5" },
+  moonshotai: { displayName: "Moonshot", icon: Moonshot, brandColor: "#8B8BF5" },
+  nvidia: { displayName: "Nvidia", icon: Nvidia, brandColor: "#74B71B" },
+  openai: { displayName: "OpenAI", icon: OpenAI, brandColor: "#10A37F" },
+  qwen: { displayName: "Qwen", icon: Qwen, brandColor: "#615CED" },
+  zhipu: { displayName: "Zhipu AI", icon: Zhipu, brandColor: "#3859FF" },
 };
 
 function extractProvider(modelId: string): string {
@@ -72,7 +87,7 @@ function getProviderConfig(providerId: string): ProviderConfig {
   return {
     displayName: providerId.charAt(0).toUpperCase() + providerId.slice(1),
     icon: Cpu,
-    accentColor: "text-gray-400",
+    brandColor: "#888888",
   };
 }
 
@@ -80,6 +95,15 @@ interface ProviderGroup {
   providerId: string;
   config: ProviderConfig;
   models: Model[];
+}
+
+function ProviderIcon({ config, size = 16 }: { config: ProviderConfig; size?: number }) {
+  const Icon = config.icon;
+  // Lobe icons use `size` prop; lucide-react (Cpu fallback) uses className
+  if (Icon === Cpu) {
+    return <Cpu style={{ width: size, height: size, color: config.brandColor }} />;
+  }
+  return <Icon size={size} style={{ color: config.brandColor }} />;
 }
 
 export function ModelSelector({
@@ -157,8 +181,6 @@ export function ModelSelector({
     });
   };
 
-  const SelectedIcon = selectedProviderConfig?.icon || Cpu;
-
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild disabled={disabled}>
@@ -168,9 +190,7 @@ export function ModelSelector({
           className="gap-2 h-9 px-3 bg-white/5 border-white/10 text-white hover:bg-white/10 hover:text-white transition-all"
         >
           <span className="flex items-center gap-2">
-            <SelectedIcon
-              className={cn("h-4 w-4", selectedProviderConfig?.accentColor || "text-gray-400")}
-            />
+            <ProviderIcon config={selectedProviderConfig || getProviderConfig("unknown")} size={16} />
             {selectedModelName}
           </span>
           <ChevronDown className="h-3 w-3 opacity-50" />
@@ -197,7 +217,7 @@ export function ModelSelector({
           </div>
         </div>
 
-        {/* Scrollable provider groups — onWheel captures trackpad events that Radix Popover would otherwise swallow */}
+        {/* Scrollable provider groups */}
         <div
           className="overflow-y-auto overscroll-contain [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-white/20 [&::-webkit-scrollbar-thumb]:rounded-full"
           style={{ maxHeight: 240 }}
@@ -217,7 +237,6 @@ export function ModelSelector({
               </div>
             ) : (
               groups.map((group) => {
-                const Icon = group.config.icon;
                 const isExpanded = expandedProviders.has(group.providerId);
 
                 return (
@@ -233,7 +252,7 @@ export function ModelSelector({
                           isExpanded && "rotate-90"
                         )}
                       />
-                      <Icon className={cn("h-4 w-4", group.config.accentColor)} />
+                      <ProviderIcon config={group.config} size={16} />
                       <span className="font-medium text-white/90">
                         {group.config.displayName}
                       </span>
