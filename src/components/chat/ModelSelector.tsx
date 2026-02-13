@@ -6,7 +6,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -182,10 +181,11 @@ export function ModelSelector({
         side="bottom"
         sideOffset={8}
         collisionPadding={16}
-        className="!w-[320px] !max-h-[320px] !p-0 !bg-[#111111] border-white/10 text-white shadow-2xl flex flex-col overflow-hidden"
+        className="!w-[320px] !p-0 border-white/10 text-white shadow-2xl"
+        style={{ background: "#111111", maxHeight: 320 }}
       >
         {/* Search header */}
-        <div className="p-3 border-b border-white/10 shrink-0">
+        <div className="p-3 border-b border-white/10">
           <div className="relative">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-white/40" />
             <Input
@@ -198,7 +198,7 @@ export function ModelSelector({
         </div>
 
         {/* Scrollable provider groups */}
-        <ScrollArea className="flex-1 min-h-0">
+        <div className="overflow-y-auto" style={{ maxHeight: 240 }}>
           <div className="py-1">
             {groups.length === 0 ? (
               <div className="px-4 py-8 text-center text-sm text-white/30">
@@ -267,7 +267,7 @@ export function ModelSelector({
               })
             )}
           </div>
-        </ScrollArea>
+        </div>
 
         {/* Footer */}
         <div className="p-2 border-t border-white/10 bg-white/[0.02] shrink-0">
