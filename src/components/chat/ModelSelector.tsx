@@ -6,6 +6,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -197,9 +198,10 @@ export function ModelSelector({
           </div>
         </div>
 
-        {/* Scrollable provider groups */}
-        <div className="overflow-y-auto" style={{ maxHeight: 240 }}>
-          <div className="py-1">
+        {/* Scrollable provider groups — wrapper bounds height, ScrollArea handles trackpad + visible scrollbar */}
+        <div style={{ maxHeight: 240, overflow: "hidden" }}>
+          <ScrollArea className="h-full">
+            <div className="py-1">
             {groups.length === 0 ? (
               <div className="px-4 py-8 text-center text-sm text-white/30">
                 No models found
@@ -266,7 +268,8 @@ export function ModelSelector({
                 );
               })
             )}
-          </div>
+            </div>
+          </ScrollArea>
         </div>
 
         {/* Footer */}
