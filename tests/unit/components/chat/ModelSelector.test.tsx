@@ -4,9 +4,9 @@ import userEvent from '@testing-library/user-event';
 import { ModelSelector } from '@/components/chat/ModelSelector';
 
 const mockModels = [
-  { id: 'model-1', name: 'Test Model 1' },
-  { id: 'model-2', name: 'Test Model 2' },
-  { id: 'model-3', name: 'Test Model 3' },
+  { id: 'us.anthropic.claude-3-5-sonnet-v2:0', name: 'Claude 3.5 Sonnet' },
+  { id: 'us.anthropic.claude-3-5-haiku-v1:0', name: 'Claude 3.5 Haiku' },
+  { id: 'us.meta.llama3-3-70b-v1:0', name: 'Llama 3.3 70B' },
 ];
 
 describe('ModelSelector', () => {
@@ -20,7 +20,7 @@ describe('ModelSelector', () => {
     render(
       <ModelSelector
         models={mockModels}
-        selectedModel="model-1"
+        selectedModel="us.anthropic.claude-3-5-sonnet-v2:0"
         onModelChange={mockOnModelChange}
         {...props}
       />
@@ -30,7 +30,7 @@ describe('ModelSelector', () => {
   describe('rendering', () => {
     it('renders selected model name', () => {
       renderSelector();
-      expect(screen.getByText('Test Model 1')).toBeInTheDocument();
+      expect(screen.getByText('Claude 3.5 Sonnet')).toBeInTheDocument();
     });
 
     it('shows placeholder when no match found', () => {
@@ -50,38 +50,140 @@ describe('ModelSelector', () => {
   });
 
   describe('dropdown behavior', () => {
-    it('opens dropdown on click', async () => {
+    it('opens dropdown and shows provider group headers', async () => {
       const user = userEvent.setup();
       renderSelector();
 
-      await user.click(screen.getByRole('button'));
+      await user.click(screen.getByRole('button', { name: /Claude 3\.5 Sonnet/i }));
 
-      expect(screen.getByText('Test Model 2')).toBeInTheDocument();
-      expect(screen.getByText('Test Model 3')).toBeInTheDocument();
+      expect(screen.getByText('Anthropic')).toBeInTheDocument();
+      expect(screen.getByText('Meta')).toBeInTheDocument();
     });
 
-    it('renders all models in dropdown', async () => {
+    it('shows correct model count badges per group', async () => {
       const user = userEvent.setup();
       renderSelector();
 
-      await user.click(screen.getByRole('button'));
+      await user.click(screen.getByRole('button', { name: /Claude 3\.5 Sonnet/i }));
 
-      // The component renders models as buttons inside the popover
-      // Model 1 appears twice (in trigger and dropdown), others appear once in dropdown
+      // Anthropic has 2 models, Meta has 1
+      expect(screen.getByText('2')).toBeInTheDocument();
+      expect(screen.getByText('1')).toBeInTheDocument();
+    });
+
+    it('auto-expands selected model group on open', async () => {
+      const user = userEvent.setup();
+      renderSelector();
+
+      await user.click(screen.getByRole('button', { name: /Claude 3\.5 Sonnet/i }));
+
+      // Anthropic group should be auto-expanded (contains selected model)
+      // Both Anthropic models should be visible
+      const sonnetElements = screen.getAllByText('Claude 3.5 Sonnet');
+      expect(sonnetElements.length).toBeGreaterThanOrEqual(1);
+      expect(screen.getByText('Claude 3.5 Haiku')).toBeInTheDocument();
+
+      // Meta group should be collapsed — Llama should NOT be visible as a model row
+      // But "Meta" header should still be visible
+      expect(screen.getByText('Meta')).toBeInTheDocument();
+    });
+
+    it('toggles group expand/collapse on header click', async () => {
+      const user = userEvent.setup();
+      renderSelector();
+
+      await user.click(screen.getByRole('button', { name: /Claude 3\.5 Sonnet/i }));
+
+      // Meta is collapsed — click to expand
+      await user.click(screen.getByText('Meta'));
+      expect(screen.getByText('Llama 3.3 70B')).toBeInTheDocument();
+
+      // Click again to collapse
+      await user.click(screen.getByText('Meta'));
+      // The model row should no longer be visible (collapsed)
+      expect(screen.queryByText('Llama 3.3 70B')).not.toBeInTheDocument();
+    });
+
+    it('renders all models when groups are expanded', async () => {
+      const user = userEvent.setup();
+      renderSelector();
+
+      await user.click(screen.getByRole('button', { name: /Claude 3\.5 Sonnet/i }));
+
+      // Expand Meta group (Anthropic is auto-expanded)
+      await user.click(screen.getByText('Meta'));
+
       for (const model of mockModels) {
         const elements = screen.getAllByText(model.name);
         expect(elements.length).toBeGreaterThanOrEqual(1);
       }
     });
 
-    it('calls onModelChange when item selected', async () => {
+    it('calls onModelChange when model selected', async () => {
       const user = userEvent.setup();
       renderSelector();
 
-      await user.click(screen.getByRole('button'));
-      await user.click(screen.getByText('Test Model 2'));
+      await user.click(screen.getByRole('button', { name: /Claude 3\.5 Sonnet/i }));
 
-      expect(mockOnModelChange).toHaveBeenCalledWith('model-2');
+      // Anthropic is auto-expanded, click Haiku
+      await user.click(screen.getByText('Claude 3.5 Haiku'));
+
+      expect(mockOnModelChange).toHaveBeenCalledWith('us.anthropic.claude-3-5-haiku-v1:0');
+    });
+
+    it('calls onModelChange from collapsed group after expanding', async () => {
+      const user = userEvent.setup();
+      renderSelector();
+
+      await user.click(screen.getByRole('button', { name: /Claude 3\.5 Sonnet/i }));
+
+      // Expand Meta group
+      await user.click(screen.getByText('Meta'));
+      await user.click(screen.getByText('Llama 3.3 70B'));
+
+      expect(mockOnModelChange).toHaveBeenCalledWith('us.meta.llama3-3-70b-v1:0');
+    });
+  });
+
+  describe('search', () => {
+    it('filters models by name and auto-expands all groups', async () => {
+      const user = userEvent.setup();
+      renderSelector();
+
+      await user.click(screen.getByRole('button', { name: /Claude 3\.5 Sonnet/i }));
+
+      const searchInput = screen.getByPlaceholderText('Search models...');
+      await user.type(searchInput, 'Llama');
+
+      // Meta group should appear with Llama visible (auto-expanded)
+      expect(screen.getByText('Llama 3.3 70B')).toBeInTheDocument();
+      // Anthropic group should be gone (no match)
+      expect(screen.queryByText('Anthropic')).not.toBeInTheDocument();
+    });
+
+    it('filters models by ID', async () => {
+      const user = userEvent.setup();
+      renderSelector();
+
+      await user.click(screen.getByRole('button', { name: /Claude 3\.5 Sonnet/i }));
+
+      const searchInput = screen.getByPlaceholderText('Search models...');
+      await user.type(searchInput, 'haiku');
+
+      expect(screen.getByText('Claude 3.5 Haiku')).toBeInTheDocument();
+      expect(screen.queryByText('Claude 3.5 Sonnet')).not.toBeInTheDocument();
+    });
+
+    it('shows no models found when search has no matches', async () => {
+      const user = userEvent.setup();
+      renderSelector();
+
+      await user.click(screen.getByRole('button', { name: /Claude 3\.5 Sonnet/i }));
+
+      const searchInput = screen.getByPlaceholderText('Search models...');
+      await user.type(searchInput, 'zzzzz');
+
+      expect(screen.getByText('No models found')).toBeInTheDocument();
     });
   });
 });
