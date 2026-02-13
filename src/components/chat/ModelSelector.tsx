@@ -73,8 +73,8 @@ export function ModelSelector({
           <ChevronDown className="h-3 w-3 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="start" side="top" collisionPadding={16} className="w-[320px] p-0 bg-[#0A0A0A] border-white/10 text-white shadow-2xl backdrop-blur-xl">
-        <div className="p-3 border-b border-white/10 space-y-3">
+      <PopoverContent align="start" side="top" collisionPadding={16} className="w-[320px] p-0 bg-[#0A0A0A] border-white/10 text-white shadow-2xl backdrop-blur-xl flex flex-col" style={{ maxHeight: 'var(--radix-popover-content-available-height)' }}>
+        <div className="p-3 border-b border-white/10 space-y-3 shrink-0">
           <div className="relative">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-white/40" />
             <Input 
@@ -108,7 +108,7 @@ export function ModelSelector({
           </div>
         </div>
 
-        <div className="max-h-[300px] overflow-y-auto py-2">
+        <div className="min-h-0 flex-1 overflow-y-auto py-2">
           {filteredModels.length === 0 ? (
             <div className="px-4 py-8 text-center text-sm text-white/30">
               No models found
@@ -153,7 +153,7 @@ export function ModelSelector({
           )}
         </div>
         
-        <div className="p-2 border-t border-white/10 bg-white/[0.02]">
+        <div className="p-2 border-t border-white/10 bg-white/[0.02] shrink-0">
           <div className="text-[10px] text-center text-white/30">
             Powered by AWS Bedrock
           </div>
