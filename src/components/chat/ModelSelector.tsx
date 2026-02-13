@@ -179,10 +179,10 @@ export function ModelSelector({
       </PopoverTrigger>
       <PopoverContent
         align="start"
-        side="top"
+        side="bottom"
+        sideOffset={8}
         collisionPadding={16}
-        className="w-[340px] p-0 bg-[#0A0A0A] border-white/10 text-white shadow-2xl backdrop-blur-xl flex flex-col"
-        style={{ maxHeight: "var(--radix-popover-content-available-height)" }}
+        className="w-[320px] max-h-[320px] p-0 bg-[#111111] border-white/10 text-white shadow-2xl flex flex-col"
       >
         {/* Search header */}
         <div className="p-3 border-b border-white/10 shrink-0">
@@ -239,6 +239,7 @@ export function ModelSelector({
                           return (
                             <button
                               key={model.id}
+                              title={model.id}
                               onClick={() => {
                                 onModelChange(model.id);
                                 setOpen(false);
@@ -250,11 +251,8 @@ export function ModelSelector({
                                   : "text-white/70 hover:bg-white/5 hover:text-white"
                               )}
                             >
-                              <div className="text-left min-w-0">
-                                <div className="font-medium truncate">{model.name}</div>
-                                <div className="text-[10px] text-white/40 group-hover:text-white/60 transition-colors truncate">
-                                  {model.id}
-                                </div>
+                              <div className="font-medium truncate text-left">
+                                {model.name}
                               </div>
                               {isSelected && (
                                 <div className="h-1.5 w-1.5 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)] shrink-0 ml-2" />
