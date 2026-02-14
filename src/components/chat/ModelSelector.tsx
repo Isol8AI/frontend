@@ -10,21 +10,21 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ChevronDown, ChevronRight, Search, Cpu } from "lucide-react";
 import {
-  Ai21,
-  Anthropic,
-  Aws,
-  Cohere,
-  DeepSeek,
-  Google,
-  Meta,
-  Minimax,
-  Mistral,
-  Moonshot,
-  Nvidia,
-  OpenAI,
-  Qwen,
-  Zhipu,
-} from "@lobehub/icons";
+  Ai21Icon,
+  AnthropicIcon,
+  AwsIcon,
+  CohereIcon,
+  DeepSeekIcon,
+  GoogleIcon,
+  MetaIcon,
+  MinimaxIcon,
+  MistralIcon,
+  MoonshotIcon,
+  NvidiaIcon,
+  OpenAIIcon,
+  QwenIcon,
+  ZhipuIcon,
+} from "./ProviderIcons";
 import { cn } from "@/lib/utils";
 
 interface Model {
@@ -46,22 +46,22 @@ interface ProviderConfig {
 }
 
 const PROVIDER_CONFIG: Record<string, ProviderConfig> = {
-  ai21: { displayName: "AI21", icon: Ai21, brandColor: "#E91E63" },
-  amazon: { displayName: "Amazon", icon: Aws, brandColor: "#FF9900" },
-  anthropic: { displayName: "Anthropic", icon: Anthropic, brandColor: "#D4A574" },
-  cohere: { displayName: "Cohere", icon: Cohere, brandColor: "#39594D" },
-  deepseek: { displayName: "DeepSeek", icon: DeepSeek, brandColor: "#4D6BFE" },
-  "glm-4": { displayName: "Zhipu AI", icon: Zhipu, brandColor: "#3859FF" },
-  google: { displayName: "Google", icon: Google, brandColor: "#4285F4" },
-  meta: { displayName: "Meta", icon: Meta, brandColor: "#0082FB" },
-  minimax: { displayName: "Minimax", icon: Minimax, brandColor: "#F23F5D" },
-  mistral: { displayName: "Mistral", icon: Mistral, brandColor: "#FA520F" },
-  moonshot: { displayName: "Moonshot", icon: Moonshot, brandColor: "#8B8BF5" },
-  moonshotai: { displayName: "Moonshot", icon: Moonshot, brandColor: "#8B8BF5" },
-  nvidia: { displayName: "Nvidia", icon: Nvidia, brandColor: "#74B71B" },
-  openai: { displayName: "OpenAI", icon: OpenAI, brandColor: "#10A37F" },
-  qwen: { displayName: "Qwen", icon: Qwen, brandColor: "#615CED" },
-  zhipu: { displayName: "Zhipu AI", icon: Zhipu, brandColor: "#3859FF" },
+  ai21: { displayName: "AI21", icon: Ai21Icon, brandColor: "#6336E7" },
+  amazon: { displayName: "Amazon", icon: AwsIcon, brandColor: "#FF9900" },
+  anthropic: { displayName: "Anthropic", icon: AnthropicIcon, brandColor: "#D4A574" },
+  cohere: { displayName: "Cohere", icon: CohereIcon, brandColor: "#39594D" },
+  deepseek: { displayName: "DeepSeek", icon: DeepSeekIcon, brandColor: "#4D6BFE" },
+  "glm-4": { displayName: "Zhipu AI", icon: ZhipuIcon, brandColor: "#3859FF" },
+  google: { displayName: "Google", icon: GoogleIcon, brandColor: "#4285F4" },
+  meta: { displayName: "Meta", icon: MetaIcon, brandColor: "#0082FB" },
+  minimax: { displayName: "Minimax", icon: MinimaxIcon, brandColor: "#F23F5D" },
+  mistral: { displayName: "Mistral", icon: MistralIcon, brandColor: "#FA520F" },
+  moonshot: { displayName: "Moonshot", icon: MoonshotIcon, brandColor: "#8B8BF5" },
+  moonshotai: { displayName: "Moonshot", icon: MoonshotIcon, brandColor: "#8B8BF5" },
+  nvidia: { displayName: "Nvidia", icon: NvidiaIcon, brandColor: "#74B71B" },
+  openai: { displayName: "OpenAI", icon: OpenAIIcon, brandColor: "#10A37F" },
+  qwen: { displayName: "Qwen", icon: QwenIcon, brandColor: "#615CED" },
+  zhipu: { displayName: "Zhipu AI", icon: ZhipuIcon, brandColor: "#3859FF" },
 };
 
 function extractProvider(modelId: string): string {
@@ -99,11 +99,10 @@ interface ProviderGroup {
 
 function ProviderIcon({ config, size = 16 }: { config: ProviderConfig; size?: number }) {
   const Icon = config.icon;
-  // Lobe icons use `size` prop; lucide-react (Cpu fallback) uses className
   if (Icon === Cpu) {
     return <Cpu style={{ width: size, height: size, color: config.brandColor }} />;
   }
-  return <Icon size={size} style={{ color: config.brandColor }} />;
+  return <Icon size={size} />;
 }
 
 export function ModelSelector({
