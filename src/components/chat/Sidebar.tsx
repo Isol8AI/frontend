@@ -3,7 +3,7 @@
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Plus, MessageSquare, Loader2, Trash2, Bot } from "lucide-react";
+import { Plus, MessageSquare, Loader2, Trash2, Bot, Settings } from "lucide-react";
 
 interface Session {
   id: string;
@@ -33,6 +33,7 @@ interface SidebarProps extends React.HTMLAttributes<HTMLDivElement> {
   onNewAgent?: () => void;
   onSelectAgent?: (name: string) => void;
   onDeleteAgent?: (name: string) => void;
+  onOpenAgentSettings?: (name: string) => void;
 }
 
 export function Sidebar({
@@ -51,6 +52,7 @@ export function Sidebar({
   onNewAgent,
   onSelectAgent,
   onDeleteAgent,
+  onOpenAgentSettings,
   ...props
 }: SidebarProps) {
   return (
@@ -165,7 +167,7 @@ export function Sidebar({
                   <Button
                     variant="ghost"
                     className={cn(
-                      "w-full justify-start gap-2 font-normal truncate transition-all pr-8",
+                      "w-full justify-start gap-2 font-normal truncate transition-all pr-16",
                       currentAgentName === agent.agent_name
                         ? "bg-accent text-accent-foreground"
                         : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
@@ -175,15 +177,26 @@ export function Sidebar({
                     <Bot className="h-4 w-4 flex-shrink-0 opacity-70" />
                     <span className="truncate">{agent.agent_name}</span>
                   </Button>
-                  <button
-                    className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-accent transition-opacity"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onDeleteAgent?.(agent.agent_name);
-                    }}
-                  >
-                    <Trash2 className="h-4 w-4 text-muted-foreground hover:text-destructive transition-colors" />
-                  </button>
+                  <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button
+                      className="p-1 rounded hover:bg-accent"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onOpenAgentSettings?.(agent.agent_name);
+                      }}
+                    >
+                      <Settings className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground transition-colors" />
+                    </button>
+                    <button
+                      className="p-1 rounded hover:bg-accent"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onDeleteAgent?.(agent.agent_name);
+                      }}
+                    >
+                      <Trash2 className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive transition-colors" />
+                    </button>
+                  </div>
                 </div>
               ))
             )

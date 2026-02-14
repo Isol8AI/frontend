@@ -7,6 +7,7 @@ import { Settings } from "lucide-react";
 
 import { Sidebar } from "@/components/chat/Sidebar";
 import { AgentCreateDialog } from "@/components/chat/AgentCreateDialog";
+import { AgentSettingsModal } from "@/components/chat/AgentSettingsModal";
 import { OrganizationSwitcher } from "@/components/organization/OrganizationSwitcher";
 import { useOrgContext } from "@/components/providers/OrganizationProvider";
 import { useApi } from "@/lib/api";
@@ -75,6 +76,7 @@ export function ChatLayout({ children }: ChatLayoutProps): React.ReactElement {
   const [currentAgentName, setCurrentAgentName] = useState<string | null>(null);
   const [agentToDelete, setAgentToDelete] = useState<string | null>(null);
   const [showCreateAgent, setShowCreateAgent] = useState(false);
+  const [settingsAgentName, setSettingsAgentName] = useState<string | null>(null);
 
   // DEBUG: Log component mount/unmount
   useEffect(() => {
@@ -253,6 +255,7 @@ export function ChatLayout({ children }: ChatLayoutProps): React.ReactElement {
             onNewAgent={() => setShowCreateAgent(true)}
             onSelectAgent={handleSelectAgent}
             onDeleteAgent={(name) => setAgentToDelete(name)}
+            onOpenAgentSettings={(name) => setSettingsAgentName(name)}
           />
         </div>
 
@@ -324,6 +327,15 @@ export function ChatLayout({ children }: ChatLayoutProps): React.ReactElement {
         open={showCreateAgent}
         onOpenChange={setShowCreateAgent}
         onCreateAgent={handleCreateAgent}
+      />
+
+      <AgentSettingsModal
+        agentName={settingsAgentName}
+        encryptionMode={agents.find((a) => a.agent_name === settingsAgentName)?.encryption_mode}
+        open={settingsAgentName !== null}
+        onOpenChange={(open) => {
+          if (!open) setSettingsAgentName(null);
+        }}
       />
     </div>
   );

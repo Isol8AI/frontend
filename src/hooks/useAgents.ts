@@ -11,6 +11,7 @@ interface Agent {
   created_at: string;
   updated_at: string;
   tarball_size_bytes: number | null;
+  encryption_mode: "zero_trust" | "background";
 }
 
 interface AgentsResponse {
