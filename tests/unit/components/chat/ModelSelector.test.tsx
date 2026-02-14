@@ -2,31 +2,29 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-// Mock @lobehub/icons — return simple SVG components for each provider
-vi.mock('@lobehub/icons', () => {
+// Mock ProviderIcons — return simple SVG components for each provider
+vi.mock('@/components/chat/ProviderIcons', () => {
   const createIcon = (name: string) => {
-    const Icon = ({ size = 16, ...props }: { size?: number; [key: string]: unknown }) => {
-      const { createElement } = require('react');
-      return createElement('svg', { 'data-testid': `icon-${name}`, width: size, height: size, ...props });
-    };
+    const Icon = ({ size = 16, ...props }: { size?: number; [key: string]: unknown }) =>
+      <svg data-testid={`icon-${name}`} width={size} height={size} {...props} />;
     Icon.displayName = name;
     return Icon;
   };
   return {
-    Ai21: createIcon('ai21'),
-    Anthropic: createIcon('anthropic'),
-    Aws: createIcon('aws'),
-    Cohere: createIcon('cohere'),
-    DeepSeek: createIcon('deepseek'),
-    Google: createIcon('google'),
-    Meta: createIcon('meta'),
-    Minimax: createIcon('minimax'),
-    Mistral: createIcon('mistral'),
-    Moonshot: createIcon('moonshot'),
-    Nvidia: createIcon('nvidia'),
-    OpenAI: createIcon('openai'),
-    Qwen: createIcon('qwen'),
-    Zhipu: createIcon('zhipu'),
+    Ai21Icon: createIcon('ai21'),
+    AnthropicIcon: createIcon('anthropic'),
+    AwsIcon: createIcon('aws'),
+    CohereIcon: createIcon('cohere'),
+    DeepSeekIcon: createIcon('deepseek'),
+    GoogleIcon: createIcon('google'),
+    MetaIcon: createIcon('meta'),
+    MinimaxIcon: createIcon('minimax'),
+    MistralIcon: createIcon('mistral'),
+    MoonshotIcon: createIcon('moonshot'),
+    NvidiaIcon: createIcon('nvidia'),
+    OpenAIIcon: createIcon('openai'),
+    QwenIcon: createIcon('qwen'),
+    ZhipuIcon: createIcon('zhipu'),
   };
 });
 
