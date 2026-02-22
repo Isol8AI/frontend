@@ -92,12 +92,17 @@ interface WSAgentPongData {
   type: "pong";
 }
 
+interface WSAgentHeartbeatData {
+  type: "heartbeat";
+}
+
 type WSAgentData =
   | WSAgentEncryptedChunkData
   | WSAgentDoneData
   | WSAgentErrorData
   | WSAgentPingData
-  | WSAgentPongData;
+  | WSAgentPongData
+  | WSAgentHeartbeatData;
 
 function isValidWSAgentData(data: unknown): data is WSAgentData {
   if (typeof data !== "object" || data === null) return false;
@@ -112,6 +117,7 @@ function isValidWSAgentData(data: unknown): data is WSAgentData {
   if (obj.type === "error" && typeof obj.message === "string") return true;
   if (obj.type === "ping") return true;
   if (obj.type === "pong") return true;
+  if (obj.type === "heartbeat") return true;
 
   return false;
 }
@@ -198,6 +204,21 @@ export function useAgentChat(): UseAgentChatReturn {
 
       if (data.type === "pong") {
         // Server acknowledged our ping
+        return;
+      }
+
+      if (data.type === "heartbeat") {
+        // Agent is working (tool execution in progress) — show indicator
+        // only if no content has arrived yet
+        if (!fullContentRef.current) {
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === currentAssistantMsgIdRef.current
+                ? { ...msg, content: "Agent is working..." }
+                : msg,
+            ),
+          );
+        }
         return;
       }
 
