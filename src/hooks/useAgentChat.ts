@@ -534,6 +534,29 @@ export function useAgentChat(): UseAgentChatReturn {
           // Continue without state - might be a new agent
         }
 
+        // Upload large state via REST to avoid API Gateway's 32KB WebSocket frame limit.
+        // The backend returns a reference UUID we include in the WebSocket message instead.
+        let stateRef: string | null = null;
+        if (encryptedStateForEnclave) {
+          const token = await getToken();
+          const uploadResp = await fetch(`${BACKEND_URL}/agents/upload-state`, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              encrypted_state: encryptedStateForEnclave,
+            }),
+          });
+          if (uploadResp.ok) {
+            const { state_ref } = await uploadResp.json();
+            stateRef = state_ref;
+          } else {
+            console.warn("[AgentWS] State upload failed, sending inline");
+          }
+        }
+
         // Build WebSocket payload
         const payload: Record<string, unknown> = {
           type: "agent_chat",
@@ -543,8 +566,10 @@ export function useAgentChat(): UseAgentChatReturn {
           user_public_key: encryption.state.publicKey,
         };
 
-        // Include re-encrypted state for zero trust mode
-        if (encryptedStateForEnclave) {
+        // Include state reference (preferred) or inline state as fallback
+        if (stateRef) {
+          payload.state_ref = stateRef;
+        } else if (encryptedStateForEnclave) {
           payload.encrypted_state = encryptedStateForEnclave;
         }
 
