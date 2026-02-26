@@ -3,6 +3,10 @@ import { cn } from "@/lib/utils";
 import { Copy, RefreshCw, Share2, Bot, ChevronDown, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useScrollToBottom } from "@/hooks/useScrollToBottom";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
+import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 
 interface Message {
   id: string;
@@ -17,6 +21,87 @@ interface MessageListProps {
   isTyping?: boolean;
   onRetry?: (assistantMsgId: string) => void;
 }
+
+function CodeBlock({ className, children, ...props }: React.HTMLAttributes<HTMLElement> & { children?: React.ReactNode }) {
+  const match = /language-(\w+)/.exec(className || "");
+  const codeString = String(children).replace(/\n$/, "");
+
+  if (!match) {
+    // Inline code
+    return (
+      <code className="bg-white/10 rounded px-1.5 py-0.5 text-sm" {...props}>
+        {children}
+      </code>
+    );
+  }
+
+  // Fenced code block
+  return (
+    <div className="relative group/code my-4 rounded-lg overflow-hidden border border-white/10">
+      <div className="flex items-center justify-between px-4 py-2 bg-white/5 border-b border-white/10">
+        <span className="text-xs text-white/40">{match[1]}</span>
+        <button
+          onClick={() => { navigator.clipboard.writeText(codeString).catch(() => {}); }}
+          className="text-xs text-white/40 hover:text-white transition-colors flex items-center gap-1"
+        >
+          <Copy className="h-3 w-3" />
+          Copy
+        </button>
+      </div>
+      <SyntaxHighlighter
+        style={oneDark}
+        language={match[1]}
+        PreTag="div"
+        customStyle={{ margin: 0, borderRadius: 0, background: "rgba(255,255,255,0.03)" }}
+      >
+        {codeString}
+      </SyntaxHighlighter>
+    </div>
+  );
+}
+
+const MarkdownContent = React.memo(function MarkdownContent({ content }: { content: string }) {
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      components={{
+        code: CodeBlock,
+        h1: ({ children }) => <h1 className="text-lg font-semibold mt-4 mb-2">{children}</h1>,
+        h2: ({ children }) => <h2 className="text-base font-semibold mt-3 mb-2">{children}</h2>,
+        h3: ({ children }) => <h3 className="text-sm font-semibold mt-3 mb-1">{children}</h3>,
+        h4: ({ children }) => <h4 className="text-sm font-medium mt-2 mb-1">{children}</h4>,
+        p: ({ children }) => <p className="mb-3 last:mb-0">{children}</p>,
+        a: ({ href, children }) => {
+          const isSafe = !href?.match(/^(javascript|data|vbscript):/i);
+          return (
+            <a href={isSafe ? href : '#'} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">
+              {children}
+            </a>
+          );
+        },
+        ul: ({ children }) => <ul className="list-disc list-inside mb-3 space-y-1">{children}</ul>,
+        ol: ({ children }) => <ol className="list-decimal list-inside mb-3 space-y-1">{children}</ol>,
+        li: ({ children }) => <li className="ml-2">{children}</li>,
+        blockquote: ({ children }) => (
+          <blockquote className="border-l-2 border-white/20 pl-4 text-white/60 my-3">{children}</blockquote>
+        ),
+        table: ({ children }) => (
+          <div className="overflow-x-auto my-4">
+            <table className="w-full border-collapse border border-white/10 text-sm">{children}</table>
+          </div>
+        ),
+        thead: ({ children }) => <thead className="bg-white/5">{children}</thead>,
+        th: ({ children }) => <th className="border border-white/10 px-3 py-2 text-left font-medium">{children}</th>,
+        td: ({ children }) => <td className="border border-white/10 px-3 py-2">{children}</td>,
+        tr: ({ children }) => <tr className="even:bg-white/5">{children}</tr>,
+        hr: () => <hr className="border-white/10 my-4" />,
+        pre: ({ children }) => <>{children}</>,
+      }}
+    >
+      {content}
+    </ReactMarkdown>
+  );
+});
 
 function ThinkingBlock({ content }: { content: string }) {
   const [isExpanded, setIsExpanded] = React.useState(false);
@@ -35,8 +120,8 @@ function ThinkingBlock({ content }: { content: string }) {
         <span className="text-sm text-white/60 italic">Thinking...</span>
       </button>
       {isExpanded && (
-        <div className="px-3 py-2 text-sm text-white/50 whitespace-pre-wrap border-t border-white/10">
-          {content}
+        <div className="px-3 py-2 text-sm text-white/50 border-t border-white/10">
+          <MarkdownContent content={content} />
         </div>
       )}
     </div>
@@ -118,18 +203,20 @@ export function MessageList({ messages, isTyping, onRetry }: MessageListProps) {
               )}
 
               <div className={cn(
-                "whitespace-pre-wrap",
+                msg.role === "user" && "whitespace-pre-wrap",
                 msg.role === "assistant" && msg.content.startsWith("Error: ") && "text-red-400/80"
               )}>
                 {msg.role === "assistant" && msg.content.startsWith("Error: ")
                   ? msg.content.slice(7)
-                  : msg.content || (isTyping && msg.role === "assistant" && !msg.thinking ? (
-                      <span className="inline-flex gap-1 items-center h-5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-white/40 animate-bounce" style={{ animationDelay: '0ms' }} />
-                        <span className="w-1.5 h-1.5 rounded-full bg-white/40 animate-bounce" style={{ animationDelay: '150ms' }} />
-                        <span className="w-1.5 h-1.5 rounded-full bg-white/40 animate-bounce" style={{ animationDelay: '300ms' }} />
-                      </span>
-                    ) : null)}
+                  : msg.role === "assistant" && msg.content
+                    ? <MarkdownContent content={msg.content} />
+                    : msg.content || (isTyping && msg.role === "assistant" && !msg.thinking ? (
+                        <span className="inline-flex gap-1 items-center h-5">
+                          <span className="w-1.5 h-1.5 rounded-full bg-white/40 animate-bounce" style={{ animationDelay: '0ms' }} />
+                          <span className="w-1.5 h-1.5 rounded-full bg-white/40 animate-bounce" style={{ animationDelay: '150ms' }} />
+                          <span className="w-1.5 h-1.5 rounded-full bg-white/40 animate-bounce" style={{ animationDelay: '300ms' }} />
+                        </span>
+                      ) : null)}
               </div>
             </div>
           </div>
