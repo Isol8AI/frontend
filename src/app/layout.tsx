@@ -2,8 +2,6 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono, Host_Grotesk, DM_Sans } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { OrganizationProvider } from "@/components/providers/OrganizationProvider";
-import { EncryptionProvider } from "@/hooks/useEncryption";
 import { SmoothScroll } from "@/components/providers/SmoothScroll";
 import "./globals.css";
 
@@ -30,8 +28,8 @@ const dmSans = DM_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "isol8 - Secure AI Enclaves",
-  description: "End-to-end encrypted AI inference running in secure Nitro Enclaves.",
+  title: "isol8 - AI Agents",
+  description: "Personal AI agents powered by OpenClaw.",
 };
 
 export default function RootLayout({
@@ -46,11 +44,7 @@ export default function RootLayout({
           className={`${geistSans.variable} ${geistMono.variable} ${hostGrotesk.variable} ${dmSans.variable} antialiased`}
         >
           <ErrorBoundary>
-            <SmoothScroll>
-              <OrganizationProvider>
-                <EncryptionProvider>{children}</EncryptionProvider>
-              </OrganizationProvider>
-            </SmoothScroll>
+            <SmoothScroll>{children}</SmoothScroll>
           </ErrorBoundary>
         </body>
       </html>

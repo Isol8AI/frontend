@@ -1,31 +1,22 @@
 /**
- * WebSocket-based agent chat hook with streaming support.
+ * WebSocket-based agent chat hook with plaintext streaming.
  *
- * This hook provides encrypted agent chat functionality over WebSocket.
- * It follows the same connection/encryption pattern as useChatWebSocket but
- * is simplified for agent interactions:
- * - No session ID tracking (agents maintain their own state in encrypted tarballs)
- * - No encrypted history re-encryption (agent state handles this server-side)
- * - No org context (agents are personal only)
- * - No session cache
- * - Messages are local state only (cleared on agent switch)
+ * Sends plaintext messages to the backend over WebSocket and receives
+ * streamed plaintext response chunks. No encryption involved.
  *
- * Encryption Flow:
- * 1. Generate ephemeral transport keypair for response decryption
- * 2. Encrypt message to enclave's public key
- * 3. Send over WebSocket with type "agent_chat"
- * 4. Stream encrypted response chunks over WebSocket
- * 5. Decrypt each chunk with transport private key
+ * Message protocol:
+ * - Send: { type: "agent_chat", agent_name: string, message: string }
+ * - Receive: { type: "chunk", content: string } -- append to response
+ * - Receive: { type: "done" } -- stream complete
+ * - Receive: { type: "error", message: string } -- error
+ * - Receive: { type: "heartbeat" } -- agent working, keep alive
+ * - Receive: { type: "pong" } -- response to our ping
  */
 
 "use client";
 
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useAuth } from "@clerk/nextjs";
-import { BACKEND_URL } from "@/lib/api";
-import { useEncryption } from "./useEncryption";
-import type { ChatMessage } from "./useChat";
-import type { SerializedEncryptedPayload } from "@/lib/crypto/message-crypto";
 
 // =============================================================================
 // Constants
@@ -34,88 +25,90 @@ import type { SerializedEncryptedPayload } from "@/lib/crypto/message-crypto";
 const MAX_RECONNECT_ATTEMPTS = 5;
 const RECONNECT_DELAYS = [1000, 2000, 4000, 8000, 16000]; // Exponential backoff
 const PING_INTERVAL_MS = 30000; // 30 seconds
+const CONNECTION_TIMEOUT_MS = 10000;
 
 // =============================================================================
 // WebSocket URL
 // =============================================================================
 
-/**
- * Construct WebSocket URL from environment or BACKEND_URL.
- *
- * Priority:
- * 1. NEXT_PUBLIC_WS_URL environment variable
- * 2. Derive from BACKEND_URL by replacing api- with ws- and https with wss
- */
 function getWebSocketUrl(): string {
   if (process.env.NEXT_PUBLIC_WS_URL) {
     return process.env.NEXT_PUBLIC_WS_URL;
   }
 
-  // Derive from BACKEND_URL
-  // e.g., https://api-dev.isol8.co/api/v1 -> wss://ws-dev.isol8.co
-  let wsUrl = BACKEND_URL.replace(/^https:\/\//, "wss://")
+  // Fallback: derive from API URL
+  const apiUrl =
+    process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+  return apiUrl
+    .replace(/^https:\/\//, "wss://")
     .replace(/^http:\/\//, "ws://")
     .replace("api-", "ws-")
-    .replace(/\/api\/v1$/, ""); // Remove path suffix
-
-  // Handle localhost case
-  if (wsUrl.includes("localhost")) {
-    wsUrl = wsUrl.replace(/\/api\/v1$/, "");
-  }
-
-  return wsUrl;
+    .replace(/\/api\/v1$/, "");
 }
 
 // =============================================================================
-// WebSocket Message Types (Agent-specific)
+// Types
 // =============================================================================
 
-interface WSAgentEncryptedChunkData {
-  type: "encrypted_chunk";
-  encrypted_content: SerializedEncryptedPayload;
+export interface AgentMessage {
+  role: "user" | "assistant";
+  content: string;
 }
 
-interface WSAgentDoneData {
+export interface UseAgentChatReturn {
+  messages: AgentMessage[];
+  isStreaming: boolean;
+  error: string | null;
+  sendMessage: (message: string) => Promise<void>;
+  clearMessages: () => void;
+  isConnected: boolean;
+}
+
+// Internal message type with ID for tracking streaming updates
+interface InternalMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+}
+
+// WebSocket incoming message types
+
+interface WSChunkData {
+  type: "chunk";
+  content: string;
+}
+
+interface WSDoneData {
   type: "done";
 }
 
-interface WSAgentErrorData {
+interface WSErrorData {
   type: "error";
   message: string;
 }
 
-interface WSAgentPingData {
-  type: "ping";
-}
-
-interface WSAgentPongData {
+interface WSPongData {
   type: "pong";
 }
 
-interface WSAgentHeartbeatData {
+interface WSHeartbeatData {
   type: "heartbeat";
 }
 
-type WSAgentData =
-  | WSAgentEncryptedChunkData
-  | WSAgentDoneData
-  | WSAgentErrorData
-  | WSAgentPingData
-  | WSAgentPongData
-  | WSAgentHeartbeatData;
+type WSIncomingData =
+  | WSChunkData
+  | WSDoneData
+  | WSErrorData
+  | WSPongData
+  | WSHeartbeatData;
 
-function isValidWSAgentData(data: unknown): data is WSAgentData {
+function isValidWSData(data: unknown): data is WSIncomingData {
   if (typeof data !== "object" || data === null) return false;
   const obj = data as Record<string, unknown>;
 
-  if (
-    obj.type === "encrypted_chunk" &&
-    typeof obj.encrypted_content === "object"
-  )
-    return true;
+  if (obj.type === "chunk" && typeof obj.content === "string") return true;
   if (obj.type === "done") return true;
   if (obj.type === "error" && typeof obj.message === "string") return true;
-  if (obj.type === "ping") return true;
   if (obj.type === "pong") return true;
   if (obj.type === "heartbeat") return true;
 
@@ -123,42 +116,19 @@ function isValidWSAgentData(data: unknown): data is WSAgentData {
 }
 
 // =============================================================================
-// Connection State
-// =============================================================================
-
-type ConnectionState = "disconnected" | "connecting" | "connected" | "error";
-
-// =============================================================================
-// Return Interface
-// =============================================================================
-
-interface UseAgentChatReturn {
-  messages: ChatMessage[];
-  isStreaming: boolean;
-  error: string | null;
-  connectionState: ConnectionState;
-  sendMessage: (
-    agentName: string,
-    content: string,
-    soulContent?: string,
-  ) => Promise<void>;
-  clearMessages: () => void;
-}
-
-// =============================================================================
 // Hook Implementation
 // =============================================================================
 
-export function useAgentChat(): UseAgentChatReturn {
+export function useAgentChat(
+  agentName: string | null,
+): UseAgentChatReturn {
   const { getToken } = useAuth();
-  const encryption = useEncryption();
 
   // State
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messages, setMessages] = useState<InternalMessage[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [connectionState, setConnectionState] =
-    useState<ConnectionState>("disconnected");
+  const [isConnected, setIsConnected] = useState(false);
 
   // Refs for WebSocket management
   const wsRef = useRef<WebSocket | null>(null);
@@ -168,12 +138,16 @@ export function useAgentChat(): UseAgentChatReturn {
   );
   const pingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Track current streaming message for updates
-  const currentAssistantMsgIdRef = useRef<string | null>(null);
-  const fullContentRef = useRef<string>("");
+  // Track current streaming assistant message
+  const currentAssistantIdRef = useRef<string | null>(null);
+  const streamContentRef = useRef<string>("");
+
+  // Keep agentName in a ref so the WS message handler always has the latest value
+  const agentNameRef = useRef(agentName);
+  agentNameRef.current = agentName;
 
   // =============================================================================
-  // Cleanup Functions
+  // Cleanup Helpers
   // =============================================================================
 
   const clearPingInterval = useCallback(() => {
@@ -194,90 +168,68 @@ export function useAgentChat(): UseAgentChatReturn {
   // Message Handler
   // =============================================================================
 
-  const handleMessage = useCallback(
-    (data: WSAgentData) => {
-      if (data.type === "ping") {
-        // Respond to server ping
-        wsRef.current?.send(JSON.stringify({ type: "pong" }));
-        return;
-      }
+  const handleMessage = useCallback((data: WSIncomingData) => {
+    if (data.type === "pong") {
+      // Server acknowledged our ping -- nothing to do
+      return;
+    }
 
-      if (data.type === "pong") {
-        // Server acknowledged our ping
-        return;
-      }
-
-      if (data.type === "heartbeat") {
-        // Agent is working (tool execution in progress) — show indicator
-        // only if no content has arrived yet
-        if (!fullContentRef.current) {
-          setMessages((prev) =>
-            prev.map((msg) =>
-              msg.id === currentAssistantMsgIdRef.current
-                ? { ...msg, content: "Agent is working..." }
-                : msg,
-            ),
-          );
-        }
-        return;
-      }
-
-      if (data.type === "encrypted_chunk") {
-        // Decrypt content chunk
-        const decryptedChunk = encryption.decryptTransportResponse(
-          data.encrypted_content,
-        );
-        fullContentRef.current += decryptedChunk;
-
-        // Update message content
+    if (data.type === "heartbeat") {
+      // Agent is working (e.g. tool execution). Show indicator if no content yet.
+      if (!streamContentRef.current && currentAssistantIdRef.current) {
         setMessages((prev) =>
           prev.map((msg) =>
-            msg.id === currentAssistantMsgIdRef.current
-              ? { ...msg, content: fullContentRef.current }
+            msg.id === currentAssistantIdRef.current
+              ? { ...msg, content: "Agent is working..." }
               : msg,
           ),
         );
-      } else if (data.type === "done") {
-        // Stream complete - agent state updated server-side
+      }
+      return;
+    }
+
+    if (data.type === "chunk") {
+      streamContentRef.current += data.content;
+      const updatedContent = streamContentRef.current;
+
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === currentAssistantIdRef.current
+            ? { ...msg, content: updatedContent }
+            : msg,
+        ),
+      );
+      return;
+    }
+
+    if (data.type === "done") {
+      setIsStreaming(false);
+      currentAssistantIdRef.current = null;
+      streamContentRef.current = "";
+      return;
+    }
+
+    if (data.type === "error") {
+      // Update the assistant placeholder with error text
+      if (currentAssistantIdRef.current) {
         setMessages((prev) =>
           prev.map((msg) =>
-            msg.id === currentAssistantMsgIdRef.current
-              ? { ...msg, isStreaming: false }
+            msg.id === currentAssistantIdRef.current
+              ? { ...msg, content: `Error: ${data.message}` }
               : msg,
           ),
         );
-
-        setIsStreaming(false);
-        currentAssistantMsgIdRef.current = null;
-        fullContentRef.current = "";
-      } else if (data.type === "error") {
-        setError(data.message);
-        setIsStreaming(false);
-
-        // Update assistant message with error
-        if (currentAssistantMsgIdRef.current) {
-          setMessages((prev) =>
-            prev.map((msg) =>
-              msg.id === currentAssistantMsgIdRef.current
-                ? {
-                    ...msg,
-                    content: `Error: ${data.message}`,
-                    isStreaming: false,
-                  }
-                : msg,
-            ),
-          );
-        }
-
-        currentAssistantMsgIdRef.current = null;
-        fullContentRef.current = "";
       }
-    },
-    [encryption],
-  );
+
+      setError(data.message);
+      setIsStreaming(false);
+      currentAssistantIdRef.current = null;
+      streamContentRef.current = "";
+    }
+  }, []);
 
   // =============================================================================
-  // WebSocket Connection (Lazy - connects on first sendMessage)
+  // WebSocket Connection (lazy -- connects on first sendMessage)
   // =============================================================================
 
   const connect = useCallback(async (): Promise<void> => {
@@ -289,8 +241,6 @@ export function useAgentChat(): UseAgentChatReturn {
       return;
     }
 
-    setConnectionState("connecting");
-
     try {
       const token = await getToken();
       if (!token) {
@@ -298,16 +248,14 @@ export function useAgentChat(): UseAgentChatReturn {
       }
 
       const wsUrl = getWebSocketUrl();
-      // API Gateway WebSocket doesn't use path routing - connect to root with token
       const ws = new WebSocket(`${wsUrl}?token=${token}`);
 
       ws.onopen = () => {
-        console.log("[AgentWS] Connected");
         reconnectAttemptRef.current = 0;
-        setConnectionState("connected");
+        setIsConnected(true);
         setError(null);
 
-        // Start ping interval to keep connection alive
+        // Start ping keep-alive
         clearPingInterval();
         pingIntervalRef.current = setInterval(() => {
           if (ws.readyState === WebSocket.OPEN) {
@@ -317,11 +265,8 @@ export function useAgentChat(): UseAgentChatReturn {
       };
 
       ws.onclose = (event) => {
-        console.log(
-          `[AgentWS] Closed: code=${event.code}, reason=${event.reason}`,
-        );
         wsRef.current = null;
-        setConnectionState("disconnected");
+        setIsConnected(false);
         clearPingInterval();
 
         // Don't reconnect for normal closure or auth failure
@@ -334,26 +279,22 @@ export function useAgentChat(): UseAgentChatReturn {
 
         // Attempt reconnection with exponential backoff
         if (reconnectAttemptRef.current < MAX_RECONNECT_ATTEMPTS) {
-          const delay = RECONNECT_DELAYS[reconnectAttemptRef.current] || 16000;
-          console.log(
-            `[AgentWS] Reconnecting in ${delay}ms (attempt ${reconnectAttemptRef.current + 1}/${MAX_RECONNECT_ATTEMPTS})`,
-          );
+          const delay =
+            RECONNECT_DELAYS[reconnectAttemptRef.current] || 16000;
           reconnectAttemptRef.current++;
           reconnectTimeoutRef.current = setTimeout(() => {
             connect();
           }, delay);
         } else {
-          setConnectionState("error");
           setError("Connection lost. Please refresh the page.");
         }
       };
 
-      ws.onerror = (event) => {
-        console.error("[AgentWS] Error:", event);
+      ws.onerror = () => {
+        // onerror fires before onclose -- actual handling happens in onclose
       };
 
       ws.onmessage = (event) => {
-        // Ignore empty messages (e.g., from HTTP integration response forwarding)
         if (!event.data || event.data.trim() === "") {
           return;
         }
@@ -361,21 +302,18 @@ export function useAgentChat(): UseAgentChatReturn {
         try {
           const data: unknown = JSON.parse(event.data);
 
-          if (!isValidWSAgentData(data)) {
-            console.warn("[AgentWS] Invalid message data:", data);
+          if (!isValidWSData(data)) {
             return;
           }
 
           handleMessage(data);
-        } catch (parseError) {
-          console.error("[AgentWS] Failed to parse message:", parseError);
+        } catch {
+          // Ignore unparseable messages
         }
       };
 
       wsRef.current = ws;
     } catch (err) {
-      console.error("[AgentWS] Connection error:", err);
-      setConnectionState("error");
       setError(err instanceof Error ? err.message : "Failed to connect");
     }
   }, [getToken, handleMessage, clearPingInterval]);
@@ -385,51 +323,27 @@ export function useAgentChat(): UseAgentChatReturn {
   // =============================================================================
 
   const sendMessage = useCallback(
-    async (
-      agentName: string,
-      content: string,
-      soulContent?: string,
-    ): Promise<void> => {
-      if (!encryption.state.isUnlocked) {
-        throw new Error("Encryption keys not unlocked");
-      }
-      if (!encryption.state.enclavePublicKey) {
-        throw new Error("Enclave public key not available");
-      }
-      if (!encryption.getPrivateKey()) {
-        throw new Error("User private key not available");
-      }
-      if (!encryption.state.publicKey) {
-        throw new Error("User public key not available");
+    async (message: string): Promise<void> => {
+      if (!agentNameRef.current) {
+        throw new Error("No agent selected");
       }
 
-      // Clear previous error
       setError(null);
 
       // Create placeholder messages
       const userMsgId = `user-${Date.now()}`;
       const assistantMsgId = `assistant-${Date.now()}`;
 
-      const userMessage: ChatMessage = {
-        id: userMsgId,
-        role: "user",
-        content,
-      };
+      // Set up streaming refs BEFORE state update to prevent race condition
+      // where early chunks arrive before the ref is set
+      currentAssistantIdRef.current = assistantMsgId;
+      streamContentRef.current = "";
 
-      const assistantMessage: ChatMessage = {
-        id: assistantMsgId,
-        role: "assistant",
-        content: "",
-        isStreaming: true,
-      };
-
-      // Store assistant message ID for updates BEFORE state update
-      // This prevents race condition where early streaming chunks arrive
-      // before the ref is set, causing updates to fail
-      currentAssistantMsgIdRef.current = assistantMsgId;
-      fullContentRef.current = "";
-
-      setMessages((prev) => [...prev, userMessage, assistantMessage]);
+      setMessages((prev) => [
+        ...prev,
+        { id: userMsgId, role: "user", content: message },
+        { id: assistantMsgId, role: "assistant", content: "" },
+      ]);
       setIsStreaming(true);
 
       try {
@@ -441,7 +355,7 @@ export function useAgentChat(): UseAgentChatReturn {
           await new Promise<void>((resolve, reject) => {
             const timeout = setTimeout(() => {
               reject(new Error("Connection timeout"));
-            }, 10000);
+            }, CONNECTION_TIMEOUT_MS);
 
             const checkConnection = setInterval(() => {
               if (wsRef.current?.readyState === WebSocket.OPEN) {
@@ -453,174 +367,84 @@ export function useAgentChat(): UseAgentChatReturn {
           });
         }
 
-        // Generate ephemeral transport keypair
-        const transportKeypair = encryption.generateTransportKeypair();
-
-        // Encrypt message to enclave
-        const encryptedMessage = encryption.encryptMessage(content);
-
-        // Fetch agent state and handle based on encryption mode
-        let encryptedStateForEnclave = null;
-
-        try {
-          const token = await getToken();
-          const stateResponse = await fetch(
-            `${BACKEND_URL}/agents/${agentName}/state`,
-            {
-              headers: {
-                Authorization: `Bearer ${token}`,
-              },
-            }
-          );
-
-          if (stateResponse.ok) {
-            const { encrypted_state, encryption_mode } = await stateResponse.json();
-
-            if (encryption_mode === "zero_trust" && encrypted_state) {
-              // Zero trust: client decrypts state, re-encrypts to enclave transport key
-              const { encryptToPublicKey, decryptWithPrivateKey, hexToBytes } = await import(
-                "@/lib/crypto/primitives"
-              );
-
-              const privateKeyHex = encryption.getPrivateKey()!;
-              const privateKeyBytes = hexToBytes(privateKeyHex);
-
-              const statePayload = {
-                ephemeralPublicKey: new Uint8Array(
-                  Buffer.from(encrypted_state.ephemeral_public_key, "hex")
-                ),
-                iv: new Uint8Array(Buffer.from(encrypted_state.iv, "hex")),
-                ciphertext: new Uint8Array(
-                  Buffer.from(encrypted_state.ciphertext, "hex")
-                ),
-                authTag: new Uint8Array(
-                  Buffer.from(encrypted_state.auth_tag, "hex")
-                ),
-                hkdfSalt: new Uint8Array(
-                  Buffer.from(encrypted_state.hkdf_salt, "hex")
-                ),
-              };
-
-              const stateBytes = decryptWithPrivateKey(
-                privateKeyBytes,
-                statePayload,
-                "agent-state-storage"
-              );
-
-              // Re-encrypt to enclave transport key
-              const encryptedForEnclave = encryptToPublicKey(
-                hexToBytes(encryption.state.enclavePublicKey!),
-                stateBytes,
-                "client-to-enclave-transport"
-              );
-
-              encryptedStateForEnclave = {
-                ephemeral_public_key: Buffer.from(
-                  encryptedForEnclave.ephemeralPublicKey
-                ).toString("hex"),
-                iv: Buffer.from(encryptedForEnclave.iv).toString("hex"),
-                ciphertext: Buffer.from(encryptedForEnclave.ciphertext).toString(
-                  "hex"
-                ),
-                auth_tag: Buffer.from(encryptedForEnclave.authTag).toString("hex"),
-                hkdf_salt: Buffer.from(encryptedForEnclave.hkdfSalt).toString("hex"),
-              };
-            }
-            // Background mode: no client-side state handling needed.
-            // The backend fetches KMS-encrypted state and sends it to the enclave directly.
-          }
-        } catch (err) {
-          console.warn("[AgentWS] Failed to fetch/process agent state:", err);
-          // Continue without state - might be a new agent
-        }
-
-        // Upload large state via REST to avoid API Gateway's 32KB WebSocket frame limit.
-        // The backend returns a reference UUID we include in the WebSocket message instead.
-        let stateRef: string | null = null;
-        if (encryptedStateForEnclave) {
-          const token = await getToken();
-          const uploadResp = await fetch(`${BACKEND_URL}/agents/upload-state`, {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${token}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              encrypted_state: encryptedStateForEnclave,
-            }),
-          });
-          if (uploadResp.ok) {
-            const { state_ref } = await uploadResp.json();
-            stateRef = state_ref;
-          } else {
-            console.warn("[AgentWS] State upload failed, sending inline");
-          }
-        }
-
-        // Build WebSocket payload
-        const payload: Record<string, unknown> = {
-          type: "agent_chat",
-          agent_name: agentName,
-          encrypted_message: encryptedMessage,
-          client_transport_public_key: transportKeypair.publicKey,
-          user_public_key: encryption.state.publicKey,
-        };
-
-        // Include state reference (preferred) or inline state as fallback
-        if (stateRef) {
-          payload.state_ref = stateRef;
-        } else if (encryptedStateForEnclave) {
-          payload.encrypted_state = encryptedStateForEnclave;
-        }
-
-        // Encrypt and include soul content for new agents (first message only)
-        if (soulContent) {
-          payload.encrypted_soul_content =
-            encryption.encryptMessage(soulContent);
-        }
-
-        wsRef.current!.send(JSON.stringify(payload));
+        // Send plaintext message
+        wsRef.current!.send(
+          JSON.stringify({
+            type: "agent_chat",
+            agent_name: agentNameRef.current,
+            message,
+          }),
+        );
       } catch (err) {
-        console.error("[AgentWS] Send message error:", err);
         const errorMessage =
           err instanceof Error ? err.message : "Failed to send message";
         setError(errorMessage);
 
-        // Update assistant message with error
+        // Update assistant placeholder with error
         setMessages((prev) =>
           prev.map((msg) =>
             msg.id === assistantMsgId
-              ? {
-                  ...msg,
-                  content: `Error: ${errorMessage}`,
-                  isStreaming: false,
-                }
+              ? { ...msg, content: `Error: ${errorMessage}` }
               : msg,
           ),
         );
 
         setIsStreaming(false);
-        currentAssistantMsgIdRef.current = null;
-        fullContentRef.current = "";
+        currentAssistantIdRef.current = null;
+        streamContentRef.current = "";
       }
     },
-    [encryption, connect, getToken],
+    [connect],
   );
 
   // =============================================================================
-  // Clear Messages (called when switching agents)
+  // Clear Messages
   // =============================================================================
 
   const clearMessages = useCallback(() => {
     setMessages([]);
     setError(null);
-    currentAssistantMsgIdRef.current = null;
-    fullContentRef.current = "";
+    setIsStreaming(false);
+    currentAssistantIdRef.current = null;
+    streamContentRef.current = "";
   }, []);
 
   // =============================================================================
-  // Cleanup on Unmount
+  // Clear messages and close connection when agentName changes
   // =============================================================================
+
+  const prevAgentNameRef = useRef<string | null | undefined>(undefined);
+
+  useEffect(() => {
+    // On initial mount, just record the agentName
+    if (prevAgentNameRef.current === undefined) {
+      prevAgentNameRef.current = agentName;
+      return;
+    }
+
+    // Agent changed -- clear state
+    if (prevAgentNameRef.current !== agentName) {
+      clearMessages();
+      prevAgentNameRef.current = agentName;
+    }
+  }, [agentName, clearMessages]);
+
+  // =============================================================================
+  // Close WebSocket when agentName becomes null or on unmount
+  // =============================================================================
+
+  useEffect(() => {
+    if (agentName === null) {
+      // Close existing connection when no agent selected
+      clearReconnectTimeout();
+      clearPingInterval();
+      if (wsRef.current) {
+        wsRef.current.close(1000, "No agent selected");
+        wsRef.current = null;
+      }
+      setIsConnected(false);
+    }
+  }, [agentName, clearReconnectTimeout, clearPingInterval]);
 
   useEffect(() => {
     return () => {
@@ -634,18 +458,21 @@ export function useAgentChat(): UseAgentChatReturn {
   }, [clearReconnectTimeout, clearPingInterval]);
 
   // =============================================================================
-  // Return Interface
+  // Project external interface (strip internal IDs from messages)
   // =============================================================================
 
+  const externalMessages: AgentMessage[] = messages.map(({ role, content }) => ({
+    role,
+    content,
+  }));
+
   return {
-    messages,
+    messages: externalMessages,
     isStreaming,
     error,
-    connectionState,
     sendMessage,
     clearMessages,
+    isConnected,
   };
 }
 
-// Export types for components that need them
-export type { UseAgentChatReturn, ConnectionState };

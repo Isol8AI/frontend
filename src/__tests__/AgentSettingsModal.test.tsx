@@ -4,7 +4,6 @@
  * Unit tests for AgentSettingsModal component.
  *
  * Focuses on:
- *  - Rendering correct encryption mode badge
  *  - Loading / error / empty states
  *  - Close confirmation when dirty
  *  - Save button enabled/disabled state
@@ -61,10 +60,6 @@ vi.mock("lucide-react", () => ({
     React.createElement("span", { "data-testid": "icon-x", ...props }),
   Loader2: (props: Record<string, unknown>) =>
     React.createElement("span", { "data-testid": "icon-loader", ...props }),
-  Lock: (props: Record<string, unknown>) =>
-    React.createElement("span", { "data-testid": "icon-lock", ...props }),
-  Cloud: (props: Record<string, unknown>) =>
-    React.createElement("span", { "data-testid": "icon-cloud", ...props }),
   Save: (props: Record<string, unknown>) =>
     React.createElement("span", { "data-testid": "icon-save", ...props }),
 }));
@@ -183,34 +178,6 @@ describe("AgentSettingsModal", () => {
   });
 
   // =========================================================================
-  // Encryption mode badge
-  // =========================================================================
-
-  it("should show 'Private' badge for zero_trust mode", () => {
-    render(
-      <AgentSettingsModal {...defaultProps} encryptionMode="zero_trust" />,
-    );
-
-    expect(screen.getByText("Private")).toBeDefined();
-    expect(screen.getByTestId("icon-lock")).toBeDefined();
-  });
-
-  it("should show 'Always-on' badge for background mode", () => {
-    render(
-      <AgentSettingsModal {...defaultProps} encryptionMode="background" />,
-    );
-
-    expect(screen.getByText("Always-on")).toBeDefined();
-    expect(screen.getByTestId("icon-cloud")).toBeDefined();
-  });
-
-  it("should default to 'Private' badge when encryptionMode not provided", () => {
-    render(<AgentSettingsModal {...defaultProps} />);
-
-    expect(screen.getByText("Private")).toBeDefined();
-  });
-
-  // =========================================================================
   // Loading state
   // =========================================================================
 
@@ -219,7 +186,7 @@ describe("AgentSettingsModal", () => {
 
     render(<AgentSettingsModal {...defaultProps} />);
 
-    expect(screen.getByText("Decrypting agent files...")).toBeDefined();
+    expect(screen.getByText("Loading agent files...")).toBeDefined();
     expect(screen.getByTestId("icon-loader")).toBeDefined();
   });
 
@@ -228,12 +195,12 @@ describe("AgentSettingsModal", () => {
   // =========================================================================
 
   it("should show error message when error is set", () => {
-    mockSettings.error = "Encryption keys not unlocked";
+    mockSettings.error = "Failed to load files";
 
     render(<AgentSettingsModal {...defaultProps} />);
 
     expect(
-      screen.getByText("Encryption keys not unlocked"),
+      screen.getByText("Failed to load files"),
     ).toBeDefined();
   });
 

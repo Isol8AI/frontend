@@ -15,6 +15,10 @@ vi.mock('@clerk/nextjs', () => ({
   }),
 }));
 
+// Mock fetch globally for API tests
+const mockFetch = vi.fn();
+globalThis.fetch = mockFetch;
+
 describe('useApi hook', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -23,6 +27,11 @@ describe('useApi hook', () => {
 
   describe('syncUser', () => {
     it('calls POST /users/sync', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ status: 'exists', user_id: 'user_test_123' }),
+      });
+
       const { result } = renderHook(() => useApi());
       const response = await result.current.syncUser();
 
@@ -30,40 +39,43 @@ describe('useApi hook', () => {
         status: 'exists',
         user_id: 'user_test_123',
       });
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('/users/sync'),
+        expect.objectContaining({ method: 'POST' }),
+      );
     });
   });
 
   describe('get', () => {
-    it('fetches models from /chat/models', async () => {
+    it('sends GET request with auth header', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ agents: [] }),
+      });
+
       const { result } = renderHook(() => useApi());
-      const response = await result.current.get('/chat/models') as unknown[];
+      const response = await result.current.get('/agents');
 
-      expect(response).toBeInstanceOf(Array);
-      expect(response.length).toBeGreaterThan(0);
-    });
-
-    it('fetches sessions from /chat/sessions', async () => {
-      const { result } = renderHook(() => useApi());
-      const response = await result.current.get('/chat/sessions') as {
-        sessions: Array<{ id: string; name: string }>;
-        total: number;
-        limit: number;
-        offset: number;
-      };
-
-      // Backend returns paginated response: { sessions: [...], total, limit, offset }
-      expect(response).toHaveProperty('sessions');
-      expect(response).toHaveProperty('total');
-      expect(response).toHaveProperty('limit');
-      expect(response).toHaveProperty('offset');
-      expect(response.sessions).toBeInstanceOf(Array);
-      expect(response.sessions[0]).toHaveProperty('id');
-      expect(response.sessions[0]).toHaveProperty('name');
+      expect(response).toEqual({ agents: [] });
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('/agents'),
+        expect.objectContaining({
+          method: 'GET',
+          headers: expect.objectContaining({
+            Authorization: 'Bearer mock-jwt-token',
+          }),
+        }),
+      );
     });
   });
 
   describe('post', () => {
     it('sends POST request with body', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ status: 'ok' }),
+      });
+
       const { result } = renderHook(() => useApi());
       const response = await result.current.post('/users/sync', {});
 
@@ -77,6 +89,16 @@ describe('useApi hook', () => {
       const { result } = renderHook(() => useApi());
 
       await expect(result.current.syncUser()).rejects.toThrow('No authentication token available');
+    });
+
+    it('throws error on non-ok response', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        json: () => Promise.resolve({ detail: 'Not found' }),
+      });
+
+      const { result } = renderHook(() => useApi());
+      await expect(result.current.get('/nonexistent')).rejects.toThrow('Not found');
     });
   });
 });

@@ -4,18 +4,8 @@ import { useAuth } from "@clerk/nextjs";
 // Use environment variable for production, fallback to localhost for development
 export const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
 
-interface CurrentOrg {
-  org_id: string | null;
-  org_name: string | null;
-  org_slug: string | null;
-  org_role: string | null;
-  is_personal_context: boolean;
-  is_org_admin: boolean;
-}
-
 interface ApiMethods {
   syncUser: () => Promise<unknown>;
-  getCurrentOrg: () => Promise<CurrentOrg>;
   get: (endpoint: string) => Promise<unknown>;
   post: (endpoint: string, body: unknown) => Promise<unknown>;
   put: (endpoint: string, body: unknown) => Promise<unknown>;
@@ -57,9 +47,6 @@ export function useApi(): ApiMethods {
     () => ({
       syncUser(): Promise<unknown> {
         return authenticatedFetch("/users/sync", { method: "POST" });
-      },
-      getCurrentOrg(): Promise<CurrentOrg> {
-        return authenticatedFetch("/organizations/current", { method: "GET" }) as Promise<CurrentOrg>;
       },
       get(endpoint: string): Promise<unknown> {
         return authenticatedFetch(endpoint, { method: "GET" });

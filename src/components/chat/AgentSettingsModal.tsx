@@ -2,20 +2,18 @@
 
 import { useEffect, useCallback } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
-import { X, Loader2, Lock, Cloud, Save } from "lucide-react";
+import { X, Loader2, Save } from "lucide-react";
 import { useAgentSettings } from "@/hooks/useAgentSettings";
 import { AgentFileTree } from "./AgentFileTree";
 
 interface AgentSettingsModalProps {
   agentName: string | null;
-  encryptionMode?: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
 
 export function AgentSettingsModal({
   agentName,
-  encryptionMode,
   open,
   onOpenChange,
 }: AgentSettingsModalProps) {
@@ -61,17 +59,6 @@ export function AgentSettingsModal({
               Agent Settings: {agentName}
             </Dialog.Title>
             <div className="flex items-center gap-2">
-              {encryptionMode === "background" ? (
-                <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                  <Cloud className="w-3 h-3" />
-                  Always-on
-                </span>
-              ) : (
-                <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                  <Lock className="w-3 h-3" />
-                  Private
-                </span>
-              )}
               <button
                 onClick={handleClose}
                 className="text-muted-foreground hover:text-foreground p-1 rounded transition-colors"
@@ -87,7 +74,7 @@ export function AgentSettingsModal({
               <div className="flex-1 flex items-center justify-center">
                 <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
                 <span className="ml-2 text-sm text-muted-foreground">
-                  Decrypting agent files...
+                  Loading agent files...
                 </span>
               </div>
             ) : settings.error ? (

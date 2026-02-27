@@ -1,19 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
 import { useAuth, UserButton } from "@clerk/nextjs";
-import { Settings } from "lucide-react";
+import { Plus, Loader2, Trash2, Bot, Settings } from "lucide-react";
 
-import { Sidebar } from "@/components/chat/Sidebar";
 import { AgentCreateDialog } from "@/components/chat/AgentCreateDialog";
 import { AgentSettingsModal } from "@/components/chat/AgentSettingsModal";
-import { OrganizationSwitcher } from "@/components/organization/OrganizationSwitcher";
-import { useOrgContext } from "@/components/providers/OrganizationProvider";
 import { useApi } from "@/lib/api";
-import { useSessions } from "@/hooks/useSessions";
 import { useAgents } from "@/hooks/useAgents";
 import { Button } from "@/components/ui/button";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { cn } from "@/lib/utils";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -29,18 +26,6 @@ interface ChatLayoutProps {
   children: React.ReactNode;
 }
 
-type SidebarTab = "chats" | "agents";
-
-function dispatchNewChatEvent(): void {
-  window.dispatchEvent(new CustomEvent("newChat"));
-}
-
-function dispatchSelectSessionEvent(sessionId: string): void {
-  window.dispatchEvent(
-    new CustomEvent("selectSession", { detail: { sessionId } }),
-  );
-}
-
 function dispatchSelectAgentEvent(
   agentName: string,
   soulContent?: string,
@@ -50,56 +35,21 @@ function dispatchSelectAgentEvent(
   );
 }
 
-function dispatchSelectChatsEvent(): void {
-  window.dispatchEvent(new CustomEvent("selectChats"));
-}
-
 export function ChatLayout({ children }: ChatLayoutProps): React.ReactElement {
   const { isSignedIn } = useAuth();
   const api = useApi();
-  const { orgId, isPersonalContext, isOrgAdmin } = useOrgContext();
-  const {
-    sessions,
-    isLoading: isLoadingSessions,
-    refresh: refreshSessions,
-    deleteSession,
-  } = useSessions();
   const {
     agents,
     isLoading: isLoadingAgents,
     createAgent,
     deleteAgent,
   } = useAgents();
-  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
-  const [sessionToDelete, setSessionToDelete] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<SidebarTab>("chats");
   const [currentAgentName, setCurrentAgentName] = useState<string | null>(null);
   const [agentToDelete, setAgentToDelete] = useState<string | null>(null);
   const [showCreateAgent, setShowCreateAgent] = useState(false);
-  const [settingsAgentName, setSettingsAgentName] = useState<string | null>(null);
-
-  // DEBUG: Log component mount/unmount
-  useEffect(() => {
-    console.log("[ChatLayout] MOUNTED");
-    return () => {
-      console.log("[ChatLayout] UNMOUNTING");
-    };
-  }, []);
-
-  // DEBUG: Log org context changes
-  useEffect(() => {
-    console.log("[ChatLayout] Org context from useOrgContext:", {
-      orgId,
-      isPersonalContext,
-      isOrgAdmin,
-    });
-  }, [orgId, isPersonalContext, isOrgAdmin]);
-
-  const resetToNewChat = useCallback((): void => {
-    setCurrentSessionId(null);
-    dispatchNewChatEvent();
-    refreshSessions();
-  }, [refreshSessions]);
+  const [settingsAgentName, setSettingsAgentName] = useState<string | null>(
+    null,
+  );
 
   useEffect(() => {
     if (!isSignedIn) return;
@@ -107,76 +57,8 @@ export function ChatLayout({ children }: ChatLayoutProps): React.ReactElement {
     api.syncUser().catch((err) => console.error("User sync failed:", err));
   }, [isSignedIn, api]);
 
-  // Note: We don't need a separate useEffect for orgId changes because
-  // OrganizationProvider dispatches 'orgContextChanged' event which is
-  // handled below. Having both would cause duplicate resets.
-
-  // Stable event listener setup
-  useEffect(() => {
-    const handleOrgContextChanged = (event: Event): void => {
-      const customEvent = event as CustomEvent;
-      console.log(
-        "[ChatLayout] Received 'orgContextChanged' event:",
-        customEvent.detail,
-      );
-      resetToNewChat();
-    };
-
-    const handleSessionUpdated = (): void => {
-      console.log("[ChatLayout] Received 'sessionUpdated' event");
-      refreshSessions();
-    };
-
-    window.addEventListener("orgContextChanged", handleOrgContextChanged);
-    window.addEventListener("sessionUpdated", handleSessionUpdated);
-
-    return () => {
-      window.removeEventListener("orgContextChanged", handleOrgContextChanged);
-      window.removeEventListener("sessionUpdated", handleSessionUpdated);
-    };
-  }, [refreshSessions, resetToNewChat]);
-
-  function handleNewChat(): void {
-    setCurrentSessionId(null);
-    dispatchNewChatEvent();
-  }
-
-  function handleSelectSession(sessionId: string): void {
-    setCurrentSessionId(sessionId);
-    dispatchSelectSessionEvent(sessionId);
-  }
-
-  const handleConfirmDelete = useCallback(async (): Promise<void> => {
-    if (!sessionToDelete) return;
-
-    try {
-      await deleteSession(sessionToDelete);
-
-      // If we deleted the active session, reset to new chat
-      if (sessionToDelete === currentSessionId) {
-        setCurrentSessionId(null);
-        dispatchNewChatEvent();
-      }
-    } catch (err) {
-      console.error("Failed to delete session:", err);
-    } finally {
-      setSessionToDelete(null);
-    }
-  }, [sessionToDelete, currentSessionId, deleteSession]);
-
-  function handleTabChange(tab: SidebarTab): void {
-    setActiveTab(tab);
-    if (tab === "chats") {
-      setCurrentAgentName(null);
-      dispatchSelectChatsEvent();
-    } else {
-      setCurrentSessionId(null);
-    }
-  }
-
   function handleSelectAgent(agentName: string): void {
     setCurrentAgentName(agentName);
-    setCurrentSessionId(null);
     dispatchSelectAgentEvent(agentName);
   }
 
@@ -197,12 +79,8 @@ export function ChatLayout({ children }: ChatLayoutProps): React.ReactElement {
   }, [agentToDelete, currentAgentName, deleteAgent]);
 
   const handleCreateAgent = useCallback(
-    async (
-      name: string,
-      soulContent?: string,
-      encryptionMode?: "zero_trust" | "background",
-    ): Promise<void> => {
-      await createAgent(name, soulContent, undefined, encryptionMode);
+    async (name: string, soulContent?: string): Promise<void> => {
+      await createAgent(name, soulContent);
       setCurrentAgentName(name);
       dispatchSelectAgentEvent(name, soulContent);
     },
@@ -216,47 +94,80 @@ export function ChatLayout({ children }: ChatLayoutProps): React.ReactElement {
 
       <div className="relative z-10 flex w-full h-full">
         <div className="w-64 hidden md:flex flex-col border-r border-border bg-sidebar/50 backdrop-blur-xl">
-          <div className="p-3 border-b border-border">
-            <OrganizationSwitcher />
+          <div className="px-3 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider border-b border-border">
+            Agents
           </div>
 
-          <div className="px-3 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">
-            {isPersonalContext ? "Personal Chats" : "Organization Chats"}
+          {/* New Agent Button */}
+          <div className="px-3 py-2">
+            <Button
+              className="w-full justify-start gap-2 bg-primary text-primary-foreground hover:bg-primary/90 font-medium transition-all shadow-lg shadow-primary/5"
+              onClick={() => setShowCreateAgent(true)}
+            >
+              <Plus className="h-4 w-4" />
+              New Agent
+            </Button>
           </div>
 
-          {!isPersonalContext && isOrgAdmin && orgId && (
-            <div className="px-3 py-2">
-              <Link href={`/org/${orgId}/settings/encryption`}>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="w-full justify-start gap-2 text-muted-foreground hover:text-foreground hover:bg-accent"
-                >
-                  <Settings className="h-4 w-4" />
-                  Org Settings
-                </Button>
-              </Link>
+          {/* Agent List */}
+          <ScrollArea className="flex-1 px-3 py-2">
+            <div className="space-y-1">
+              {isLoadingAgents ? (
+                <div className="flex items-center justify-center py-4">
+                  <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                  <span className="ml-2 text-xs text-muted-foreground">
+                    Loading...
+                  </span>
+                </div>
+              ) : agents.length === 0 ? (
+                <p className="text-xs text-muted-foreground/50 text-center py-4">
+                  No agents yet
+                </p>
+              ) : (
+                agents.map((agent) => (
+                  <div key={agent.agent_name} className="group relative">
+                    <Button
+                      variant="ghost"
+                      className={cn(
+                        "w-full justify-start gap-2 font-normal truncate transition-all pr-16",
+                        currentAgentName === agent.agent_name
+                          ? "bg-accent text-accent-foreground"
+                          : "text-muted-foreground hover:text-foreground hover:bg-accent/50",
+                      )}
+                      onClick={() => handleSelectAgent(agent.agent_name)}
+                    >
+                      <Bot className="h-4 w-4 flex-shrink-0 opacity-70" />
+                      <span className="truncate">{agent.agent_name}</span>
+                    </Button>
+                    <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button
+                        className="p-1 rounded hover:bg-accent"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSettingsAgentName(agent.agent_name);
+                        }}
+                      >
+                        <Settings className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground transition-colors" />
+                      </button>
+                      <button
+                        className="p-1 rounded hover:bg-accent"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setAgentToDelete(agent.agent_name);
+                        }}
+                      >
+                        <Trash2 className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive transition-colors" />
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
-          )}
+          </ScrollArea>
 
-          <Sidebar
-            className="flex-1"
-            sessions={sessions}
-            currentSessionId={currentSessionId}
-            isLoading={isLoadingSessions}
-            onNewChat={handleNewChat}
-            onSelectSession={handleSelectSession}
-            onDeleteSession={(id) => setSessionToDelete(id)}
-            activeTab={activeTab}
-            onTabChange={handleTabChange}
-            agents={agents}
-            currentAgentName={currentAgentName}
-            isLoadingAgents={isLoadingAgents}
-            onNewAgent={() => setShowCreateAgent(true)}
-            onSelectAgent={handleSelectAgent}
-            onDeleteAgent={(name) => setAgentToDelete(name)}
-            onOpenAgentSettings={(name) => setSettingsAgentName(name)}
-          />
+          <div className="p-4 border-t border-border text-[10px] text-muted-foreground/40 text-center uppercase tracking-widest font-mono">
+            Isol8 v0.1
+          </div>
         </div>
 
         <main className="flex-1 min-h-0 flex flex-col relative bg-background/20">
@@ -273,30 +184,6 @@ export function ChatLayout({ children }: ChatLayoutProps): React.ReactElement {
           <div className="flex-1 min-h-0 pt-14 flex flex-col">{children}</div>
         </main>
       </div>
-
-      <AlertDialog
-        open={!!sessionToDelete}
-        onOpenChange={(open) => !open && setSessionToDelete(null)}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete this chat?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will permanently delete this conversation and all its
-              messages. This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleConfirmDelete}
-              className="bg-red-600 hover:bg-red-700"
-            >
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
 
       <AlertDialog
         open={!!agentToDelete}
@@ -331,7 +218,6 @@ export function ChatLayout({ children }: ChatLayoutProps): React.ReactElement {
 
       <AgentSettingsModal
         agentName={settingsAgentName}
-        encryptionMode={agents.find((a) => a.agent_name === settingsAgentName)?.encryption_mode}
         open={settingsAgentName !== null}
         onOpenChange={(open) => {
           if (!open) setSettingsAgentName(null);

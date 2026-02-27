@@ -59,7 +59,7 @@ export function Features() {
             <ul className="space-y-6">
               {[
                 "Client-side encryption before transmission",
-                "Decryption only within isolated enclave hardware",
+                "Secure processing with TLS encryption in transit",
                 "Ephemeral processing with zero logging"
               ].map((item, i) => (
                 <motion.li 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { Loader2, Lock, Cloud } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -18,12 +18,10 @@ const AGENT_NAME_REGEX = /^[a-zA-Z0-9_-]+$/;
 const AGENT_NAME_MAX = 50;
 const SOUL_CONTENT_MAX = 10000;
 
-type EncryptionMode = "zero_trust" | "background";
-
 interface AgentCreateDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onCreateAgent: (name: string, soulContent?: string, encryptionMode?: EncryptionMode) => Promise<void>;
+  onCreateAgent: (name: string, soulContent?: string) => Promise<void>;
 }
 
 export function AgentCreateDialog({
@@ -33,7 +31,6 @@ export function AgentCreateDialog({
 }: AgentCreateDialogProps) {
   const [name, setName] = useState("");
   const [soulContent, setSoulContent] = useState("");
-  const [encryptionMode, setEncryptionMode] = useState<EncryptionMode>("zero_trust");
   const [nameError, setNameError] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
 
@@ -41,7 +38,6 @@ export function AgentCreateDialog({
     if (!isOpen) {
       setName("");
       setSoulContent("");
-      setEncryptionMode("zero_trust");
       setNameError(null);
       setIsCreating(false);
     }
@@ -95,7 +91,6 @@ export function AgentCreateDialog({
       await onCreateAgent(
         name.trim(),
         soulContent.trim() || undefined,
-        encryptionMode,
       );
       handleOpenChange(false);
     } catch {
@@ -178,53 +173,6 @@ export function AgentCreateDialog({
             </p>
           </div>
 
-          {/* Encryption Mode */}
-          <div>
-            <label className="text-sm font-medium text-white mb-1.5 block">
-              Encryption Mode
-            </label>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                disabled={isCreating}
-                onClick={() => setEncryptionMode("zero_trust")}
-                className={`flex items-center gap-2 px-3 py-2.5 rounded-md border text-sm transition-colors ${
-                  encryptionMode === "zero_trust"
-                    ? "border-white/30 bg-white/10 text-white"
-                    : "border-white/10 bg-white/5 text-white/50 hover:border-white/20 hover:text-white/70"
-                } disabled:cursor-not-allowed disabled:opacity-50`}
-                data-testid="encryption-mode-zero-trust"
-              >
-                <Lock className="h-4 w-4 shrink-0" />
-                <div className="text-left">
-                  <div className="font-medium">Private</div>
-                  <div className="text-xs opacity-60">Only you can access</div>
-                </div>
-              </button>
-              <button
-                type="button"
-                disabled={isCreating}
-                onClick={() => setEncryptionMode("background")}
-                className={`flex items-center gap-2 px-3 py-2.5 rounded-md border text-sm transition-colors ${
-                  encryptionMode === "background"
-                    ? "border-white/30 bg-white/10 text-white"
-                    : "border-white/10 bg-white/5 text-white/50 hover:border-white/20 hover:text-white/70"
-                } disabled:cursor-not-allowed disabled:opacity-50`}
-                data-testid="encryption-mode-background"
-              >
-                <Cloud className="h-4 w-4 shrink-0" />
-                <div className="text-left">
-                  <div className="font-medium">Always-on</div>
-                  <div className="text-xs opacity-60">Runs in background</div>
-                </div>
-              </button>
-            </div>
-            <p className="text-xs text-white/40 mt-1.5">
-              {encryptionMode === "zero_trust"
-                ? "Only you can decrypt this agent\u2019s data. You must be online to use it."
-                : "Agent can run in the background. Data encrypted by AWS, accessible only to secure enclave."}
-            </p>
-          </div>
         </div>
 
         <AlertDialogFooter>

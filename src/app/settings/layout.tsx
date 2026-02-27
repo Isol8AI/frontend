@@ -1,6 +1,6 @@
 export const metadata = {
   title: 'Settings - isol8',
-  description: 'Manage your encryption keys and preferences',
+  description: 'Manage your agent settings and preferences',
 }
 
 export default function SettingsLayout({
