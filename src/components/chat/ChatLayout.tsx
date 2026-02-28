@@ -6,6 +6,7 @@ import { Plus, Bot, LayoutDashboard } from "lucide-react";
 
 import Link from "next/link";
 import { SubscriptionGate } from "@/components/chat/SubscriptionGate";
+import { ContainerGate } from "@/components/chat/ContainerGate";
 import { useApi } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -147,7 +148,9 @@ export function ChatLayout({
           </header>
 
           <div className="flex-1 min-h-0 pt-14 flex flex-col">
-            <SubscriptionGate>{children}</SubscriptionGate>
+            <SubscriptionGate>
+              <ContainerGate>{children}</ContainerGate>
+            </SubscriptionGate>
           </div>
         </main>
       </div>
