@@ -1,91 +1,97 @@
-/**
- * Hook for agent settings (file browser).
- *
- * TODO: Implement plaintext file browsing via new REST endpoints
- * that read/write agent workspace files on disk.
- */
-
 "use client";
 
 import { useState, useCallback } from "react";
-
-export interface AgentFile {
-  path: string;
-  content: string;
-  originalContent: string;
-  size: number;
-}
+import { useAuth } from "@clerk/nextjs";
+import { BACKEND_URL } from "@/lib/api";
 
 interface UseAgentSettingsReturn {
-  files: AgentFile[];
+  soulContent: string;
+  originalSoulContent: string;
   loading: boolean;
   saving: boolean;
   error: string | null;
   isDirty: boolean;
-  selectedPath: string | null;
-  selectFile: (path: string) => void;
-  updateFileContent: (path: string, content: string) => void;
-  loadFiles: (agentName: string) => Promise<void>;
+  setSoulContent: (content: string) => void;
+  loadAgent: (agentName: string) => Promise<void>;
   save: (agentName: string) => Promise<void>;
   reset: () => void;
 }
 
 export function useAgentSettings(): UseAgentSettingsReturn {
-  const [files, setFiles] = useState<AgentFile[]>([]);
+  const { getToken } = useAuth();
+  const [soulContent, setSoulContent] = useState("");
+  const [originalSoulContent, setOriginalSoulContent] = useState("");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [selectedPath, setSelectedPath] = useState<string | null>(null);
 
-  const isDirty = files.some((f) => f.content !== f.originalContent);
+  const isDirty = soulContent !== originalSoulContent;
 
-  const selectFile = useCallback((path: string) => {
-    setSelectedPath(path);
-  }, []);
-
-  const updateFileContent = useCallback((path: string, content: string) => {
-    setFiles((prev) =>
-      prev.map((f) =>
-        f.path === path
-          ? { ...f, content, size: new TextEncoder().encode(content).length }
-          : f,
-      ),
-    );
-  }, []);
-
-  const loadFiles = useCallback(async (_agentName: string): Promise<void> => {
+  const loadAgent = useCallback(async (agentName: string): Promise<void> => {
     setLoading(true);
     setError(null);
-    setFiles([]);
-    setSelectedPath(null);
 
-    // TODO: Implement plaintext file loading from new REST endpoint
-    setError("Agent file browser not yet available in this version.");
-    setLoading(false);
-  }, []);
+    try {
+      const token = await getToken();
+      if (!token) throw new Error("No auth token");
 
-  const save = useCallback(async (_agentName: string): Promise<void> => {
+      const res = await fetch(`${BACKEND_URL}/agents/${agentName}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error("Failed to load agent");
+
+      const agent = await res.json();
+      const content = agent.soul_content ?? "";
+      setSoulContent(content);
+      setOriginalSoulContent(content);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load agent");
+    } finally {
+      setLoading(false);
+    }
+  }, [getToken]);
+
+  const save = useCallback(async (agentName: string): Promise<void> => {
     setSaving(true);
-    setError("Saving not yet available in this version.");
-    setSaving(false);
-  }, []);
+    setError(null);
+
+    try {
+      const token = await getToken();
+      if (!token) throw new Error("No auth token");
+
+      const res = await fetch(`${BACKEND_URL}/agents/${agentName}`, {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ soul_content: soulContent || null }),
+      });
+      if (!res.ok) throw new Error("Failed to save agent settings");
+
+      setOriginalSoulContent(soulContent);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save");
+    } finally {
+      setSaving(false);
+    }
+  }, [getToken, soulContent]);
 
   const reset = useCallback(() => {
-    setFiles([]);
-    setSelectedPath(null);
+    setSoulContent("");
+    setOriginalSoulContent("");
     setError(null);
   }, []);
 
   return {
-    files,
+    soulContent,
+    originalSoulContent,
     loading,
     saving,
     error,
     isDirty,
-    selectedPath,
-    selectFile,
-    updateFileContent,
-    loadFiles,
+    setSoulContent,
+    loadAgent,
     save,
     reset,
   };

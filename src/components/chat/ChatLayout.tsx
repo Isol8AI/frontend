@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useAuth, UserButton } from "@clerk/nextjs";
-import { Plus, Loader2, Trash2, Bot, Settings } from "lucide-react";
+import { Plus, Loader2, Trash2, Bot, Settings, LayoutDashboard } from "lucide-react";
 
+import Link from "next/link";
 import { AgentCreateDialog } from "@/components/chat/AgentCreateDialog";
 import { AgentSettingsModal } from "@/components/chat/AgentSettingsModal";
 import { useApi } from "@/lib/api";
@@ -171,7 +172,13 @@ export function ChatLayout({ children }: ChatLayoutProps): React.ReactElement {
         </div>
 
         <main className="flex-1 min-h-0 flex flex-col relative bg-background/20">
-          <header className="h-14 border-b border-border flex items-center justify-end px-4 backdrop-blur-sm bg-background/20 absolute top-0 right-0 left-0 z-20">
+          <header className="h-14 border-b border-border flex items-center justify-end gap-2 px-4 backdrop-blur-sm bg-background/20 absolute top-0 right-0 left-0 z-20">
+            <Link href="/dashboard">
+              <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground hover:text-foreground">
+                <LayoutDashboard className="h-4 w-4" />
+                <span className="hidden sm:inline text-xs">Dashboard</span>
+              </Button>
+            </Link>
             <UserButton
               appearance={{
                 elements: {

@@ -4,10 +4,10 @@
  * Unit tests for AgentSettingsModal component.
  *
  * Focuses on:
- *  - Loading / error / empty states
+ *  - Loading / error states
+ *  - SOUL.md editor rendering
  *  - Close confirmation when dirty
  *  - Save button enabled/disabled state
- *  - File selection and editor rendering
  *
  * Self-contained: all deps mocked inline.
  */
@@ -22,36 +22,20 @@ import { render, screen, fireEvent } from "@testing-library/react";
 
 // Track the mock settings state so tests can control it
 const mockSettings = {
-  files: [] as Array<{
-    path: string;
-    content: string;
-    originalContent: string;
-    size: number;
-  }>,
+  soulContent: "",
+  originalSoulContent: "",
   loading: false,
   saving: false,
   error: null as string | null,
   isDirty: false,
-  selectedPath: null as string | null,
-  selectFile: vi.fn(),
-  updateFileContent: vi.fn(),
-  loadFiles: vi.fn(),
+  setSoulContent: vi.fn(),
+  loadAgent: vi.fn(),
   save: vi.fn(),
   reset: vi.fn(),
 };
 
 vi.mock("@/hooks/useAgentSettings", () => ({
   useAgentSettings: () => mockSettings,
-}));
-
-// Mock AgentFileTree to avoid pulling in its own dependencies
-vi.mock("@/components/chat/AgentFileTree", () => ({
-  AgentFileTree: (props: {
-    files: unknown[];
-    selectedPath: string | null;
-    onSelectFile: (p: string) => void;
-  }) =>
-    React.createElement("div", { "data-testid": "file-tree" }, "FileTree"),
 }));
 
 // Mock lucide-react
@@ -116,19 +100,6 @@ import { AgentSettingsModal } from "@/components/chat/AgentSettingsModal";
 // Helpers
 // ---------------------------------------------------------------------------
 
-function makeFile(
-  path: string,
-  content = "content",
-  originalContent?: string,
-) {
-  return {
-    path,
-    content,
-    originalContent: originalContent ?? content,
-    size: content.length,
-  };
-}
-
 const defaultProps = {
   agentName: "test-agent",
   open: true,
@@ -143,12 +114,12 @@ describe("AgentSettingsModal", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     // Reset mock settings to clean state
-    mockSettings.files = [];
+    mockSettings.soulContent = "";
+    mockSettings.originalSoulContent = "";
     mockSettings.loading = false;
     mockSettings.saving = false;
     mockSettings.error = null;
     mockSettings.isDirty = false;
-    mockSettings.selectedPath = null;
   });
 
   // =========================================================================
@@ -186,7 +157,7 @@ describe("AgentSettingsModal", () => {
 
     render(<AgentSettingsModal {...defaultProps} />);
 
-    expect(screen.getByText("Loading agent files...")).toBeDefined();
+    expect(screen.getByText("Loading agent settings...")).toBeDefined();
     expect(screen.getByTestId("icon-loader")).toBeDefined();
   });
 
@@ -195,79 +166,74 @@ describe("AgentSettingsModal", () => {
   // =========================================================================
 
   it("should show error message when error is set", () => {
-    mockSettings.error = "Failed to load files";
+    mockSettings.error = "Failed to load agent";
 
     render(<AgentSettingsModal {...defaultProps} />);
 
-    expect(
-      screen.getByText("Failed to load files"),
-    ).toBeDefined();
+    expect(screen.getByText("Failed to load agent")).toBeDefined();
   });
 
-  // =========================================================================
-  // Empty state
-  // =========================================================================
-
-  it("should show empty message when no files", () => {
-    mockSettings.files = [];
-    mockSettings.loading = false;
-    mockSettings.error = null;
+  it("should show Try again button on error", () => {
+    mockSettings.error = "Failed to load agent";
 
     render(<AgentSettingsModal {...defaultProps} />);
 
-    expect(
-      screen.getByText(
-        "No files found. Send a message first to initialize the agent.",
-      ),
-    ).toBeDefined();
+    const tryAgain = screen.getByText("Try again");
+    expect(tryAgain).toBeDefined();
+
+    fireEvent.click(tryAgain);
+    expect(mockSettings.loadAgent).toHaveBeenCalledWith("test-agent");
   });
 
   // =========================================================================
-  // Files loaded - file tree and editor
+  // SOUL.md editor
   // =========================================================================
 
-  it("should render file tree and editor when files exist", () => {
-    mockSettings.files = [
-      makeFile("agents/test/SOUL.md", "You are helpful"),
-    ];
-    mockSettings.selectedPath = "agents/test/SOUL.md";
+  it("should render textarea editor when loaded", () => {
+    mockSettings.soulContent = "You are helpful";
 
     render(<AgentSettingsModal {...defaultProps} />);
 
-    expect(screen.getByTestId("file-tree")).toBeDefined();
-    // Selected file path should appear in editor header
-    expect(screen.getByText("agents/test/SOUL.md")).toBeDefined();
+    const textarea = document.querySelector("textarea");
+    expect(textarea).not.toBeNull();
+    expect(textarea?.value).toBe("You are helpful");
   });
 
-  it("should show 'Select a file to view' when no file selected", () => {
-    mockSettings.files = [makeFile("agents/test/SOUL.md")];
-    mockSettings.selectedPath = null;
-
+  it("should show SOUL.md label", () => {
     render(<AgentSettingsModal {...defaultProps} />);
 
-    expect(screen.getByText("Select a file to view")).toBeDefined();
+    expect(screen.getByText("SOUL.md")).toBeDefined();
   });
 
-  it("should show (modified) indicator for dirty file", () => {
-    mockSettings.files = [
-      makeFile("agents/test/SOUL.md", "new content", "old content"),
-    ];
-    mockSettings.selectedPath = "agents/test/SOUL.md";
+  it("should show (modified) indicator when dirty", () => {
+    mockSettings.isDirty = true;
 
     render(<AgentSettingsModal {...defaultProps} />);
 
     expect(screen.getByText("(modified)")).toBeDefined();
   });
 
-  it("should NOT show (modified) indicator for clean file", () => {
-    mockSettings.files = [
-      makeFile("agents/test/SOUL.md", "same", "same"),
-    ];
-    mockSettings.selectedPath = "agents/test/SOUL.md";
+  it("should NOT show (modified) indicator when clean", () => {
+    mockSettings.isDirty = false;
 
     render(<AgentSettingsModal {...defaultProps} />);
 
     expect(screen.queryByText("(modified)")).toBeNull();
+  });
+
+  it("should call setSoulContent when textarea value changes", () => {
+    mockSettings.soulContent = "You are helpful";
+
+    render(<AgentSettingsModal {...defaultProps} />);
+
+    const textarea = document.querySelector("textarea");
+    expect(textarea).not.toBeNull();
+
+    fireEvent.change(textarea!, { target: { value: "You are very helpful" } });
+
+    expect(mockSettings.setSoulContent).toHaveBeenCalledWith(
+      "You are very helpful",
+    );
   });
 
   // =========================================================================
@@ -275,7 +241,6 @@ describe("AgentSettingsModal", () => {
   // =========================================================================
 
   it("should disable Save button when not dirty", () => {
-    mockSettings.files = [makeFile("SOUL.md")];
     mockSettings.isDirty = false;
 
     render(<AgentSettingsModal {...defaultProps} />);
@@ -285,7 +250,6 @@ describe("AgentSettingsModal", () => {
   });
 
   it("should enable Save button when dirty", () => {
-    mockSettings.files = [makeFile("SOUL.md", "changed", "original")];
     mockSettings.isDirty = true;
 
     render(<AgentSettingsModal {...defaultProps} />);
@@ -371,13 +335,13 @@ describe("AgentSettingsModal", () => {
   });
 
   // =========================================================================
-  // loadFiles called on open
+  // loadAgent called on open
   // =========================================================================
 
-  it("should call loadFiles when opened with an agent name", () => {
+  it("should call loadAgent when opened with an agent name", () => {
     render(<AgentSettingsModal {...defaultProps} />);
 
-    expect(mockSettings.loadFiles).toHaveBeenCalledWith("test-agent");
+    expect(mockSettings.loadAgent).toHaveBeenCalledWith("test-agent");
   });
 
   it("should call reset when dialog closes", () => {
@@ -388,7 +352,7 @@ describe("AgentSettingsModal", () => {
     expect(mockSettings.reset).toHaveBeenCalled();
   });
 
-  it("should not call loadFiles when agentName is null", () => {
+  it("should not call loadAgent when agentName is null", () => {
     render(
       <AgentSettingsModal
         agentName={null}
@@ -397,30 +361,7 @@ describe("AgentSettingsModal", () => {
       />,
     );
 
-    expect(mockSettings.loadFiles).not.toHaveBeenCalled();
-  });
-
-  // =========================================================================
-  // Textarea editor interaction
-  // =========================================================================
-
-  it("should call updateFileContent when textarea value changes", () => {
-    mockSettings.files = [
-      makeFile("agents/test/SOUL.md", "You are helpful"),
-    ];
-    mockSettings.selectedPath = "agents/test/SOUL.md";
-
-    render(<AgentSettingsModal {...defaultProps} />);
-
-    const textarea = document.querySelector("textarea");
-    expect(textarea).not.toBeNull();
-
-    fireEvent.change(textarea!, { target: { value: "You are very helpful" } });
-
-    expect(mockSettings.updateFileContent).toHaveBeenCalledWith(
-      "agents/test/SOUL.md",
-      "You are very helpful",
-    );
+    expect(mockSettings.loadAgent).not.toHaveBeenCalled();
   });
 
   // =========================================================================
@@ -433,7 +374,6 @@ describe("AgentSettingsModal", () => {
 
     render(<AgentSettingsModal {...defaultProps} />);
 
-    // The Save button should contain the loader icon
     const saveButton = screen.getByText("Save").closest("button");
     expect(saveButton?.querySelector("[data-testid='icon-loader']")).not.toBeNull();
   });

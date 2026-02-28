@@ -4,7 +4,6 @@ import { useEffect, useCallback } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { X, Loader2, Save } from "lucide-react";
 import { useAgentSettings } from "@/hooks/useAgentSettings";
-import { AgentFileTree } from "./AgentFileTree";
 
 interface AgentSettingsModalProps {
   agentName: string | null;
@@ -21,7 +20,7 @@ export function AgentSettingsModal({
 
   useEffect(() => {
     if (open && agentName) {
-      settings.loadFiles(agentName);
+      settings.loadAgent(agentName);
     }
     if (!open) {
       settings.reset();
@@ -44,10 +43,6 @@ export function AgentSettingsModal({
     await settings.save(agentName);
   }, [agentName, settings]);
 
-  const selectedFile = settings.files.find(
-    (f) => f.path === settings.selectedPath,
-  );
-
   return (
     <Dialog.Root open={open} onOpenChange={handleClose}>
       <Dialog.Portal>
@@ -69,66 +64,41 @@ export function AgentSettingsModal({
           </div>
 
           {/* Body */}
-          <div className="flex-1 flex overflow-hidden">
+          <div className="flex-1 flex flex-col overflow-hidden">
             {settings.loading ? (
               <div className="flex-1 flex items-center justify-center">
                 <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
                 <span className="ml-2 text-sm text-muted-foreground">
-                  Loading agent files...
+                  Loading agent settings...
                 </span>
               </div>
             ) : settings.error ? (
-              <div className="flex-1 flex items-center justify-center">
+              <div className="flex-1 flex flex-col items-center justify-center gap-2">
                 <p className="text-sm text-destructive">{settings.error}</p>
-              </div>
-            ) : settings.files.length === 0 ? (
-              <div className="flex-1 flex items-center justify-center">
-                <p className="text-sm text-muted-foreground">
-                  No files found. Send a message first to initialize the agent.
-                </p>
+                <button
+                  onClick={() => agentName && settings.loadAgent(agentName)}
+                  className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Try again
+                </button>
               </div>
             ) : (
               <>
-                {/* File Tree */}
-                <div className="w-64 border-r border-border overflow-y-auto py-2">
-                  <AgentFileTree
-                    files={settings.files}
-                    selectedPath={settings.selectedPath}
-                    onSelectFile={settings.selectFile}
-                  />
-                </div>
-
-                {/* Editor */}
-                <div className="flex-1 flex flex-col overflow-hidden">
-                  {selectedFile ? (
-                    <>
-                      <div className="px-4 py-2 border-b border-border text-xs text-muted-foreground">
-                        {selectedFile.path}
-                        {selectedFile.content !==
-                          selectedFile.originalContent && (
-                          <span className="ml-2 text-amber-400">
-                            (modified)
-                          </span>
-                        )}
-                      </div>
-                      <textarea
-                        className="flex-1 bg-background text-foreground text-sm font-mono p-4 resize-none focus:outline-none"
-                        value={selectedFile.content}
-                        onChange={(e) =>
-                          settings.updateFileContent(
-                            selectedFile.path,
-                            e.target.value,
-                          )
-                        }
-                        spellCheck={false}
-                      />
-                    </>
-                  ) : (
-                    <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">
-                      Select a file to view
-                    </div>
+                <div className="px-4 py-2 border-b border-border flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground font-mono">
+                    SOUL.md
+                  </span>
+                  {settings.isDirty && (
+                    <span className="text-xs text-amber-400">(modified)</span>
                   )}
                 </div>
+                <textarea
+                  className="flex-1 bg-background text-foreground text-sm font-mono p-4 resize-none focus:outline-none"
+                  value={settings.soulContent}
+                  onChange={(e) => settings.setSoulContent(e.target.value)}
+                  placeholder="Define your agent's personality and instructions here..."
+                  spellCheck={false}
+                />
               </>
             )}
           </div>
