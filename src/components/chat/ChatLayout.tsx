@@ -7,6 +7,7 @@ import { Plus, Loader2, Trash2, Bot, Settings, LayoutDashboard } from "lucide-re
 import Link from "next/link";
 import { AgentCreateDialog } from "@/components/chat/AgentCreateDialog";
 import { AgentSettingsModal } from "@/components/chat/AgentSettingsModal";
+import { SubscriptionGate } from "@/components/chat/SubscriptionGate";
 import { useApi } from "@/lib/api";
 import { useAgents } from "@/hooks/useAgents";
 import { Button } from "@/components/ui/button";
@@ -188,7 +189,9 @@ export function ChatLayout({ children }: ChatLayoutProps): React.ReactElement {
             />
           </header>
 
-          <div className="flex-1 min-h-0 pt-14 flex flex-col">{children}</div>
+          <div className="flex-1 min-h-0 pt-14 flex flex-col">
+            <SubscriptionGate>{children}</SubscriptionGate>
+          </div>
         </main>
       </div>
 
