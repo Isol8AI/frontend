@@ -61,11 +61,15 @@ export function useContainerRpc<T = unknown>(
       ? `rpc|${method}|${params ? JSON.stringify(params) : ""}`
       : null;
 
-  const { data, error, isLoading, mutate } = useSWR<T>(swrKey, fetcher, {
-    revalidateOnFocus: false,
-    dedupingInterval: 10000,
-    ...config,
-  });
+  const { data, error, isLoading, mutate } = useSWR<T | undefined>(
+    swrKey as string | null,
+    fetcher as (key: string) => Promise<T | undefined>,
+    {
+      revalidateOnFocus: false,
+      dedupingInterval: 10000,
+      ...config,
+    },
+  );
 
   return {
     data,
