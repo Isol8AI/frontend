@@ -1,6 +1,8 @@
+export const dynamic = "force-dynamic";
+
 export const metadata = {
   title: 'Chat - isol8',
-  description: 'Secure AI chat with end-to-end encryption',
+  description: 'AI agent chat',
 }
 
 export default function ChatLayout({

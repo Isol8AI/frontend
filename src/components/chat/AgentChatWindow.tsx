@@ -15,15 +15,11 @@ interface Message {
 }
 
 interface AgentChatWindowProps {
-  agentName: string | null;
-  pendingSoulContent?: string;
-  onSoulContentSent?: () => void;
+  agentName: string;
 }
 
 export function AgentChatWindow({
   agentName,
-  pendingSoulContent,
-  onSoulContentSent,
 }: AgentChatWindowProps): React.ReactElement {
   const {
     messages: chatMessages,
@@ -51,18 +47,13 @@ export function AgentChatWindow({
 
   const handleSend = useCallback(
     async (content: string): Promise<void> => {
-      if (!agentName) return;
-
       try {
         await sendMessage(content);
-        if (pendingSoulContent) {
-          onSoulContentSent?.();
-        }
       } catch (err) {
         console.error("Failed to send message:", err);
       }
     },
-    [sendMessage, agentName, pendingSoulContent, onSoulContentSent],
+    [sendMessage],
   );
 
   const messages: Message[] = useMemo(
@@ -74,18 +65,6 @@ export function AgentChatWindow({
       })),
     [chatMessages],
   );
-
-  if (!agentName) {
-    return (
-      <div className="flex flex-col h-full bg-background/20">
-        <div className="flex-1 flex flex-col items-center justify-center p-4">
-          <p className="text-muted-foreground text-lg font-light">
-            Select an agent to start chatting
-          </p>
-        </div>
-      </div>
-    );
-  }
 
   const connectionIndicator =
     !isConnected ? (

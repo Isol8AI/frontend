@@ -9,6 +9,7 @@ interface ApiMethods {
   get: (endpoint: string) => Promise<unknown>;
   post: (endpoint: string, body: unknown) => Promise<unknown>;
   put: (endpoint: string, body: unknown) => Promise<unknown>;
+  del: (endpoint: string) => Promise<unknown>;
 }
 
 export function useApi(): ApiMethods {
@@ -62,6 +63,9 @@ export function useApi(): ApiMethods {
           method: "PUT",
           body: JSON.stringify(body),
         });
+      },
+      del(endpoint: string): Promise<unknown> {
+        return authenticatedFetch(endpoint, { method: "DELETE" });
       },
     }),
     [authenticatedFetch]

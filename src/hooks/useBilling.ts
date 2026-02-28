@@ -93,6 +93,7 @@ export function useBilling() {
 
   const isSubscribed = data?.has_subscription === true;
   const planTier = data?.plan_tier ?? "free";
+  const refresh = useCallback(() => mutate(), [mutate]);
 
   return {
     account: data,
@@ -102,6 +103,6 @@ export function useBilling() {
     planTier,
     createCheckout,
     openPortal,
-    refresh: () => mutate(),
+    refresh,
   };
 }

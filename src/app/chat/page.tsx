@@ -3,21 +3,17 @@
 import { useEffect, useState } from "react";
 import { ChatLayout } from "@/components/chat/ChatLayout";
 import { AgentChatWindow } from "@/components/chat/AgentChatWindow";
+import { ControlPanelRouter } from "@/components/control/ControlPanelRouter";
 
 export default function ChatPage() {
-  const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
-  const [pendingSoulContent, setPendingSoulContent] = useState<
-    string | undefined
-  >(undefined);
+  const [selectedAgent, setSelectedAgent] = useState<string>("main");
+  const [activeView, setActiveView] = useState<"chat" | "control">("chat");
+  const [activePanel, setActivePanel] = useState<string>("overview");
 
   useEffect(() => {
     function handleSelectAgent(e: Event) {
-      const customEvent = e as CustomEvent<{
-        agentName: string;
-        soulContent?: string;
-      }>;
+      const customEvent = e as CustomEvent<{ agentName: string }>;
       setSelectedAgent(customEvent.detail.agentName);
-      setPendingSoulContent(customEvent.detail.soulContent);
     }
 
     window.addEventListener("selectAgent", handleSelectAgent);
@@ -28,17 +24,16 @@ export default function ChatPage() {
   }, []);
 
   return (
-    <ChatLayout>
-      {selectedAgent ? (
-        <AgentChatWindow
-          agentName={selectedAgent}
-          pendingSoulContent={pendingSoulContent}
-          onSoulContentSent={() => setPendingSoulContent(undefined)}
-        />
+    <ChatLayout
+      activeView={activeView}
+      onViewChange={setActiveView}
+      activePanel={activePanel}
+      onPanelChange={setActivePanel}
+    >
+      {activeView === "chat" ? (
+        <AgentChatWindow agentName={selectedAgent} />
       ) : (
-        <div className="flex-1 flex items-center justify-center text-muted-foreground">
-          <p>Select an agent or create a new one to get started.</p>
-        </div>
+        <ControlPanelRouter panel={activePanel} />
       )}
     </ChatLayout>
   );

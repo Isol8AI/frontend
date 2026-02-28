@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
-import { Loader2, Zap, Crown } from "lucide-react";
+import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { Loader2, Zap, Crown, CheckCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useBilling } from "@/hooks/useBilling";
 
@@ -10,8 +11,45 @@ export function SubscriptionGate({
 }: {
   children: React.ReactNode;
 }) {
-  const { isLoading, isSubscribed, createCheckout } = useBilling();
+  const { isLoading, isSubscribed, createCheckout, refresh } = useBilling();
+  const searchParams = useSearchParams();
   const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
+
+  const justSubscribed = searchParams.get("subscription") === "success";
+  const [polling, setPolling] = useState(false);
+  const [timedOut, setTimedOut] = useState(false);
+
+  // Poll for subscription activation after returning from Stripe checkout
+  useEffect(() => {
+    if (!justSubscribed || isSubscribed || isLoading) return;
+
+    setPolling(true);
+    setTimedOut(false);
+    let attempts = 0;
+    const maxAttempts = 20; // 20 * 2s = 40s max
+
+    const interval = setInterval(async () => {
+      attempts++;
+      await refresh();
+
+      if (attempts >= maxAttempts) {
+        clearInterval(interval);
+        setPolling(false);
+        setTimedOut(true);
+      }
+    }, 2000);
+
+    return () => clearInterval(interval);
+  }, [justSubscribed, isSubscribed, isLoading, refresh]);
+
+  // Stop polling once subscription is confirmed
+  useEffect(() => {
+    if (isSubscribed && polling) {
+      setPolling(false);
+      // Clean up URL param
+      window.history.replaceState({}, "", "/chat");
+    }
+  }, [isSubscribed, polling]);
 
   const handleCheckout = async (tier: "starter" | "pro") => {
     setCheckoutLoading(tier);
@@ -27,6 +65,39 @@ export function SubscriptionGate({
     return (
       <div className="flex-1 flex items-center justify-center">
         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  // Show timeout error if polling exhausted
+  if (justSubscribed && !isSubscribed && timedOut) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <h2 className="text-xl font-semibold">Setup taking longer than expected</h2>
+          <p className="text-sm text-muted-foreground">
+            Your payment was received but container setup hasn&apos;t completed yet.
+          </p>
+          <Button variant="outline" onClick={() => window.location.reload()}>
+            Refresh
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  // Show activation spinner while waiting for webhook to process
+  if (justSubscribed && !isSubscribed) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <CheckCircle className="h-10 w-10 text-green-500 mx-auto" />
+          <h2 className="text-xl font-semibold">Payment received!</h2>
+          <div className="flex items-center justify-center gap-2 text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            <p className="text-sm">Setting up your container...</p>
+          </div>
+        </div>
       </div>
     );
   }
