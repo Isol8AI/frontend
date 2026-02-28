@@ -39,15 +39,15 @@ export function FilesPanel() {
         <p className="text-sm text-muted-foreground">No files in workspace.</p>
       ) : (
         <div className="space-y-1">
-          {files.map((f: { path?: string; name?: string }) => (
-            <div key={f.path || f.name} className="flex items-center justify-between p-2 rounded-md border border-border">
+          {files.map((f) => (
+            <div key={f.path} className="flex items-center justify-between p-2 rounded-md border border-border">
               <div className="flex items-center gap-2">
                 <FileText className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm font-mono">{f.path || f.name}</span>
+                <span className="text-sm font-mono">{f.path}</span>
               </div>
               <div className="flex gap-1">
-                <Button size="sm" variant="ghost" onClick={() => downloadFile(f.path || f.name)}><Download className="h-3 w-3" /></Button>
-                <Button size="sm" variant="ghost" className="text-destructive" onClick={() => deleteFile(f.path || f.name)}><Trash2 className="h-3 w-3" /></Button>
+                <Button size="sm" variant="ghost" onClick={() => downloadFile(f.path)}><Download className="h-3 w-3" /></Button>
+                <Button size="sm" variant="ghost" className="text-destructive" onClick={() => deleteFile(f.path)}><Trash2 className="h-3 w-3" /></Button>
               </div>
             </div>
           ))}
