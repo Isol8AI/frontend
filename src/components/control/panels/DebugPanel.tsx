@@ -5,7 +5,7 @@ import { useContainerRpc } from "@/hooks/useContainerRpc";
 import { Button } from "@/components/ui/button";
 
 export function DebugPanel() {
-  const { data, error, isLoading, mutate } = useContainerRpc<unknown>("debug.info");
+  const { data, error, isLoading, mutate } = useContainerRpc<unknown>("status");
 
   if (isLoading) {
     return (

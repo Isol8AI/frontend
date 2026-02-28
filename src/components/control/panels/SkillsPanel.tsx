@@ -15,7 +15,7 @@ interface Skill {
 }
 
 export function SkillsPanel() {
-  const { data, error, isLoading, mutate } = useContainerRpc<Skill[]>("skills.list");
+  const { data, error, isLoading, mutate } = useContainerRpc<Skill[]>("skills.status");
   const [filter, setFilter] = useState("");
 
   if (isLoading) {

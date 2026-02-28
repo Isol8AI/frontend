@@ -8,11 +8,86 @@ import { cn } from "@/lib/utils";
 
 const LEVELS = ["trace", "debug", "info", "warn", "error", "fatal"] as const;
 
+const LEVEL_COLORS: Record<string, string> = {
+  trace: "text-muted-foreground/40",
+  debug: "text-muted-foreground",
+  info: "text-blue-400",
+  warn: "text-yellow-400",
+  error: "text-red-400",
+  fatal: "text-red-500 font-bold",
+};
+
+const LEVEL_BADGE_COLORS: Record<string, string> = {
+  trace: "bg-muted/30 text-muted-foreground/60",
+  debug: "bg-muted/50 text-muted-foreground",
+  info: "bg-blue-500/10 text-blue-400",
+  warn: "bg-yellow-500/10 text-yellow-400",
+  error: "bg-red-500/10 text-red-400",
+  fatal: "bg-red-500/20 text-red-500",
+};
+
+interface LogsResponse {
+  file?: string;
+  cursor?: number;
+  size?: number;
+  lines?: unknown[];
+  truncated?: boolean;
+  reset?: boolean;
+}
+
+interface LogEntry {
+  time?: string;
+  date?: string;
+  logLevelName?: string;
+  level?: string | number;
+  name?: string;
+  msg?: string;
+  message?: string;
+  [key: string]: unknown;
+}
+
+function parseLogLine(line: unknown): { time: string; level: string; source: string; message: string } {
+  if (typeof line === "string") {
+    try {
+      const parsed = JSON.parse(line) as LogEntry;
+      return extractLogFields(parsed);
+    } catch {
+      return { time: "", level: "info", source: "", message: line };
+    }
+  }
+  if (typeof line === "object" && line !== null) {
+    return extractLogFields(line as LogEntry);
+  }
+  return { time: "", level: "info", source: "", message: String(line) };
+}
+
+function extractLogFields(entry: LogEntry): { time: string; level: string; source: string; message: string } {
+  const time = entry.time || entry.date || "";
+  const timeStr = time ? new Date(time).toLocaleTimeString() : "";
+
+  let level = "info";
+  if (entry.logLevelName) level = entry.logLevelName.toLowerCase();
+  else if (typeof entry.level === "string") level = entry.level.toLowerCase();
+  else if (typeof entry.level === "number") {
+    if (entry.level <= 10) level = "trace";
+    else if (entry.level <= 20) level = "debug";
+    else if (entry.level <= 30) level = "info";
+    else if (entry.level <= 40) level = "warn";
+    else if (entry.level <= 50) level = "error";
+    else level = "fatal";
+  }
+
+  const source = entry.name || "";
+  const message = entry.msg || entry.message || JSON.stringify(entry);
+
+  return { time: timeStr, level, source, message };
+}
+
 export function LogsPanel() {
   const [level, setLevel] = useState<string>("info");
-  const { data, error, isLoading, mutate } = useContainerRpc<unknown>(
+  const { data: rawData, error, isLoading, mutate } = useContainerRpc<LogsResponse | unknown[]>(
     "logs.tail",
-    { level, limit: 200 },
+    { limit: 200 },
     { refreshInterval: 5000 },
   );
 
@@ -35,12 +110,28 @@ export function LogsPanel() {
     );
   }
 
-  const logs = Array.isArray(data) ? data : typeof data === "string" ? data.split("\n") : [];
+  // Handle both { lines: [...] } and bare array
+  const rawLines: unknown[] = Array.isArray(rawData)
+    ? rawData
+    : (rawData as LogsResponse)?.lines ?? [];
+  const file = !Array.isArray(rawData) ? (rawData as LogsResponse)?.file : undefined;
+
+  const levelIndex = LEVELS.indexOf(level as typeof LEVELS[number]);
+  const allParsed = rawLines.map(parseLogLine);
+  const logs = allParsed.filter((entry) => {
+    const entryIndex = LEVELS.indexOf(entry.level as typeof LEVELS[number]);
+    return entryIndex >= levelIndex;
+  });
 
   return (
     <div className="p-6 space-y-4 flex flex-col h-full">
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold">Logs</h2>
+        <div>
+          <h2 className="text-lg font-semibold">Logs</h2>
+          <p className="text-xs text-muted-foreground">
+            {file ? `File: ${file}` : "Gateway file logs."}
+          </p>
+        </div>
         <Button variant="ghost" size="sm" onClick={() => mutate()}>
           <RefreshCw className="h-3.5 w-3.5" />
         </Button>
@@ -51,29 +142,41 @@ export function LogsPanel() {
           <button
             key={l}
             className={cn(
-              "px-2 py-0.5 text-xs rounded-md transition-colors",
+              "px-2.5 py-1 text-xs rounded-md transition-colors",
               level === l
-                ? "bg-primary text-primary-foreground"
-                : "bg-muted/50 text-muted-foreground hover:bg-muted"
+                ? LEVEL_BADGE_COLORS[l]
+                : "bg-muted/30 text-muted-foreground/40 hover:bg-muted/50 hover:text-muted-foreground"
             )}
             onClick={() => setLevel(l)}
           >
             {l}
           </button>
         ))}
+        <span className="text-xs text-muted-foreground/40 self-center ml-2">{logs.length} entries</span>
       </div>
 
-      <pre className="flex-1 text-xs bg-muted/30 rounded-lg p-3 overflow-auto font-mono leading-relaxed min-h-0">
-        {logs.length > 0 ? (
-          logs.map((line, i) => (
-            <div key={i} className="hover:bg-muted/20">
-              {typeof line === "string" ? line : JSON.stringify(line)}
-            </div>
-          ))
-        ) : (
-          <span className="text-muted-foreground">No logs available.</span>
-        )}
-      </pre>
+      <div className="flex-1 min-h-0 bg-muted/20 rounded-lg border border-border overflow-auto">
+        <div className="p-2 space-y-0.5 font-mono text-xs">
+          {logs.length > 0 ? (
+            logs.map((entry, i) => (
+              <div key={i} className="flex gap-2 px-1 py-0.5 rounded hover:bg-muted/30">
+                {entry.time && (
+                  <span className="text-muted-foreground/40 flex-shrink-0 w-20">{entry.time}</span>
+                )}
+                <span className={cn("flex-shrink-0 w-12 text-right", LEVEL_COLORS[entry.level] || "text-muted-foreground")}>
+                  {entry.level}
+                </span>
+                {entry.source && (
+                  <span className="text-muted-foreground/60 flex-shrink-0 max-w-24 truncate">{entry.source}</span>
+                )}
+                <span className="text-foreground/80 break-all">{entry.message}</span>
+              </div>
+            ))
+          ) : (
+            <span className="text-muted-foreground p-2">No logs at this level.</span>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

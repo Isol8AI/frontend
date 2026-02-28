@@ -5,16 +5,36 @@ import { Loader2, RefreshCw, Save } from "lucide-react";
 import { useContainerRpc, useContainerRpcMutation } from "@/hooks/useContainerRpc";
 import { Button } from "@/components/ui/button";
 
+interface ConfigResponse {
+  raw?: string;
+  hash?: string;
+}
+
 export function ConfigPanel() {
-  const { data, error, isLoading, mutate } = useContainerRpc<Record<string, unknown>>("config.get");
+  const { data: rawData, error, isLoading, mutate } = useContainerRpc<ConfigResponse | Record<string, unknown>>("config.get");
   const callRpc = useContainerRpcMutation();
   const [editing, setEditing] = useState(false);
   const [rawJson, setRawJson] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
+  // Handle both { raw, hash } and plain object response
+  const configResponse = rawData as ConfigResponse | Record<string, unknown> | undefined;
+  const configRaw = typeof (configResponse as ConfigResponse)?.raw === "string"
+    ? (configResponse as ConfigResponse).raw!
+    : configResponse ? JSON.stringify(configResponse, null, 2) : "";
+  const configHash = (configResponse as ConfigResponse)?.hash;
+
+  // Try to pretty-print the raw config
+  let displayJson = configRaw;
+  try {
+    displayJson = JSON.stringify(JSON.parse(configRaw), null, 2);
+  } catch {
+    // already a string, use as-is
+  }
+
   const startEditing = () => {
-    setRawJson(JSON.stringify(data, null, 2));
+    setRawJson(displayJson);
     setEditing(true);
     setSaveError(null);
   };
@@ -23,8 +43,9 @@ export function ConfigPanel() {
     setSaving(true);
     setSaveError(null);
     try {
-      const parsed = JSON.parse(rawJson);
-      await callRpc("config.set", parsed);
+      // Validate JSON
+      JSON.parse(rawJson);
+      await callRpc("config.set", { raw: rawJson, baseHash: configHash });
       setEditing(false);
       mutate();
     } catch (err) {
@@ -56,7 +77,10 @@ export function ConfigPanel() {
   return (
     <div className="p-6 space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold">Config</h2>
+        <div>
+          <h2 className="text-lg font-semibold">Config</h2>
+          <p className="text-xs text-muted-foreground">openclaw.json configuration.</p>
+        </div>
         <div className="flex gap-2">
           {editing ? (
             <>
@@ -85,14 +109,14 @@ export function ConfigPanel() {
 
       {editing ? (
         <textarea
-          className="w-full h-96 bg-muted/30 rounded-lg p-3 text-xs font-mono border border-border focus:outline-none focus:ring-1 focus:ring-primary resize-none"
+          className="w-full h-[calc(100vh-220px)] bg-muted/30 rounded-lg p-3 text-xs font-mono border border-border focus:outline-none focus:ring-1 focus:ring-primary resize-none"
           value={rawJson}
           onChange={(e) => setRawJson(e.target.value)}
           spellCheck={false}
         />
       ) : (
-        <pre className="text-xs bg-muted/30 rounded-lg p-3 overflow-auto max-h-[calc(100vh-200px)]">
-          {data ? JSON.stringify(data, null, 2) : "No config data."}
+        <pre className="text-xs bg-muted/30 rounded-lg p-3 overflow-auto max-h-[calc(100vh-220px)] font-mono">
+          {displayJson || "No config data."}
         </pre>
       )}
     </div>

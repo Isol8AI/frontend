@@ -13,7 +13,7 @@ interface Node {
 }
 
 export function NodesPanel() {
-  const { data, error, isLoading, mutate } = useContainerRpc<Node[]>("nodes.list");
+  const { data, error, isLoading, mutate } = useContainerRpc<Node[]>("node.list");
 
   if (isLoading) {
     return (

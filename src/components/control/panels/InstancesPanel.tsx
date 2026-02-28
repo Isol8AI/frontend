@@ -13,7 +13,7 @@ interface Instance {
 }
 
 export function InstancesPanel() {
-  const { data, error, isLoading, mutate } = useContainerRpc<Instance[]>("instances.list");
+  const { data, error, isLoading, mutate } = useContainerRpc<Instance[]>("node.list");
 
   if (isLoading) {
     return (

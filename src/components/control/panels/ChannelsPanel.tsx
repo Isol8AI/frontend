@@ -13,7 +13,7 @@ interface Channel {
 }
 
 export function ChannelsPanel() {
-  const { data, error, isLoading, mutate } = useContainerRpc<Channel[]>("channels.list");
+  const { data, error, isLoading, mutate } = useContainerRpc<Channel[]>("channels.status");
   const callRpc = useContainerRpcMutation();
 
   const handleToggle = async (name: string, currentlyEnabled: boolean) => {

@@ -18,7 +18,7 @@ interface UsageData {
 }
 
 export function UsagePanel() {
-  const { data, error, isLoading, mutate } = useContainerRpc<UsageData>("usage.summary");
+  const { data, error, isLoading, mutate } = useContainerRpc<UsageData>("usage.cost");
 
   if (isLoading) {
     return (
