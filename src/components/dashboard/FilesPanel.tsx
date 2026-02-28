@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { useFiles } from "@/hooks/useFiles";
 
 export function FilesPanel() {
-  const { files, isLoading, error, uploadFile, deleteFile, downloadFile, refresh } = useFiles();
+  const { files, isLoading, error, uploadFile, deleteFile, downloadFile } = useFiles();
   const [showUpload, setShowUpload] = useState(false);
   const [uploadPath, setUploadPath] = useState("");
   const [uploadContent, setUploadContent] = useState("");
@@ -39,7 +39,7 @@ export function FilesPanel() {
         <p className="text-sm text-muted-foreground">No files in workspace.</p>
       ) : (
         <div className="space-y-1">
-          {files.map((f: any) => (
+          {files.map((f: { path?: string; name?: string }) => (
             <div key={f.path || f.name} className="flex items-center justify-between p-2 rounded-md border border-border">
               <div className="flex items-center gap-2">
                 <FileText className="h-4 w-4 text-muted-foreground" />

@@ -43,7 +43,7 @@ export function DebugPanel() {
         <h3 className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-1"><Cpu className="h-3 w-3" />Models</h3>
         {models && models.length > 0 ? (
           <div className="space-y-1">
-            {models.map((m: any, i: number) => (
+            {models.map((m: { id: string; provider: string }, i: number) => (
               <div key={i} className="text-sm flex items-center justify-between p-2 rounded border border-border">
                 <span className="font-mono text-xs">{m.id}</span>
                 <span className="text-xs text-muted-foreground">{m.provider}</span>
@@ -58,7 +58,7 @@ export function DebugPanel() {
         <h3 className="text-xs font-medium text-muted-foreground mb-2">Recent Events</h3>
         {events && events.length > 0 ? (
           <div className="space-y-1 max-h-64 overflow-auto">
-            {events.map((e: any, i: number) => (
+            {events.map((e: { type: string; timestamp: string }, i: number) => (
               <div key={i} className="text-xs p-2 rounded border border-border flex justify-between">
                 <span className="font-mono">{e.type}</span>
                 <span className="text-muted-foreground">{e.timestamp}</span>

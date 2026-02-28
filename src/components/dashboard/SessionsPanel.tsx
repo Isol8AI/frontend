@@ -46,7 +46,7 @@ export function SessionsPanel() {
         <p className="text-sm text-muted-foreground">No active sessions.</p>
       ) : (
         <div className="space-y-1">
-          {sessions.map((s: any) => (
+          {sessions.map((s: { id: string; agent?: string; created_at?: string }) => (
             <div key={s.id} className="flex items-center justify-between p-2 rounded-md border border-border">
               <div>
                 <span className="text-sm font-mono">{s.id}</span>

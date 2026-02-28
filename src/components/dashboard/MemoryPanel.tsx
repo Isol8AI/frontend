@@ -40,7 +40,7 @@ export function MemoryPanel() {
 
   const memories = data?.memories ?? [];
   const filtered = searchQuery
-    ? memories.filter((m: any) => JSON.stringify(m).toLowerCase().includes(searchQuery.toLowerCase()))
+    ? memories.filter((m: { id: string; content: string; created_at?: string }) => JSON.stringify(m).toLowerCase().includes(searchQuery.toLowerCase()))
     : memories;
 
   return (
@@ -61,7 +61,7 @@ export function MemoryPanel() {
         <p className="text-sm text-muted-foreground">{searchQuery ? "No matches found." : "No memories stored."}</p>
       ) : (
         <div className="space-y-2">
-          {filtered.map((m: any) => (
+          {filtered.map((m: { id: string; content: string; created_at?: string }) => (
             <div key={m.id} className="p-3 rounded-md border border-border">
               <div className="flex justify-between items-start">
                 <p className="text-sm flex-1">{typeof m.content === "string" ? m.content : JSON.stringify(m.content)}</p>

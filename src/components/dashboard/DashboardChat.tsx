@@ -7,7 +7,7 @@ import { useAgents } from "@/hooks/useAgents";
 import { useAgentChat } from "@/hooks/useAgentChat";
 
 export function DashboardChat() {
-  const { agents, isLoading: agentsLoading } = useAgents();
+  const { agents } = useAgents();
   const [selectedAgent, setSelectedAgent] = useState<string>("");
   const [input, setInput] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -36,7 +36,7 @@ export function DashboardChat() {
           onChange={(e) => setSelectedAgent(e.target.value)}
         >
           <option value="">Select an agent...</option>
-          {(agents ?? []).map((a: any) => (
+          {(agents ?? []).map((a: { agent_name: string }) => (
             <option key={a.agent_name} value={a.agent_name}>{a.agent_name}</option>
           ))}
         </select>
@@ -54,7 +54,7 @@ export function DashboardChat() {
             <p className="text-sm">Send a message to start a conversation</p>
           </div>
         ) : (
-          messages.map((msg: any, i: number) => (
+          messages.map((msg: { role: string; content: string }, i: number) => (
             <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
               <div className={`max-w-[80%] rounded-lg px-3 py-2 text-sm ${
                 msg.role === "user"

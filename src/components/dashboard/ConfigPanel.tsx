@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Loader2, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useSettings } from "@/hooks/useSettings";
@@ -8,19 +8,17 @@ import { useSettings } from "@/hooks/useSettings";
 export function ConfigPanel() {
   const { config, isLoading, error, updateConfig } = useSettings();
   const [tab, setTab] = useState<"form" | "json">("form");
-  const [rawJson, setRawJson] = useState("");
   const [jsonError, setJsonError] = useState("");
+  const [rawJson, setRawJson] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (config) setRawJson(JSON.stringify(config, null, 2));
-  }, [config]);
+  const displayJson = rawJson ?? (config ? JSON.stringify(config, null, 2) : "");
 
   if (isLoading) return <div className="flex justify-center p-8"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>;
   if (error) return <div className="p-4 text-destructive text-sm">Failed to load config.</div>;
 
   const handleJsonSave = async () => {
     try {
-      const parsed = JSON.parse(rawJson);
+      const parsed = JSON.parse(displayJson);
       setJsonError("");
       await updateConfig(parsed);
     } catch {
@@ -51,7 +49,7 @@ export function ConfigPanel() {
         <div className="space-y-2">
           <textarea
             className="w-full h-96 rounded-md border border-border bg-background px-3 py-2 text-sm font-mono resize-none"
-            value={rawJson}
+            value={displayJson}
             onChange={(e) => setRawJson(e.target.value)}
           />
           {jsonError && <p className="text-destructive text-xs">{jsonError}</p>}

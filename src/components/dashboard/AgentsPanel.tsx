@@ -36,7 +36,7 @@ export function AgentsPanel() {
         <p className="text-sm text-muted-foreground">No agents created yet.</p>
       ) : (
         <div className="space-y-2">
-          {agents.map((a: any) => (
+          {agents.map((a: { id?: string; agent_name: string }) => (
             <div key={a.id || a.agent_name} className="flex items-center justify-between p-3 rounded-md border border-border">
               <div className="flex items-center gap-2">
                 <Bot className="h-4 w-4 text-muted-foreground" />

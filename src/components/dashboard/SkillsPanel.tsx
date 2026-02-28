@@ -1,11 +1,11 @@
 "use client";
 
-import { Loader2, Download, ToggleLeft, ToggleRight } from "lucide-react";
+import { Loader2, ToggleLeft, ToggleRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useSkills } from "@/hooks/useSkills";
 
 export function SkillsPanel() {
-  const { skills, isLoading, error, installSkill, toggleSkill } = useSkills();
+  const { skills, isLoading, error, toggleSkill } = useSkills();
 
   if (isLoading) return <div className="flex justify-center p-8"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>;
   if (error) return <div className="p-4 text-destructive text-sm">Failed to load skills.</div>;
