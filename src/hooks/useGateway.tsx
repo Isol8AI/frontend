@@ -45,7 +45,9 @@ export type ChatIncomingMessage =
   | { type: "chunk"; content: string }
   | { type: "done" }
   | { type: "error"; message: string }
-  | { type: "heartbeat" };
+  | { type: "heartbeat" }
+  | { type: "tool_start"; tool: string }
+  | { type: "tool_end"; tool: string };
 
 /** Gateway event forwarded from OpenClaw */
 export interface GatewayEvent {
@@ -153,7 +155,9 @@ export function GatewayProvider({ children }: { children: ReactNode }) {
       msgType === "chunk" ||
       msgType === "done" ||
       msgType === "error" ||
-      msgType === "heartbeat"
+      msgType === "heartbeat" ||
+      msgType === "tool_start" ||
+      msgType === "tool_end"
     ) {
       const chatMsg = data as unknown as ChatIncomingMessage;
       for (const handler of chatHandlersRef.current) {

@@ -8,12 +8,18 @@ import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 
+interface ToolUse {
+  tool: string;
+  status: "running" | "done";
+}
+
 interface Message {
   id: string;
   role: "user" | "assistant";
   content: string;
   thinking?: string;
   model?: string;
+  toolUses?: ToolUse[];
 }
 
 interface MessageListProps {
@@ -128,6 +134,32 @@ function ThinkingBlock({ content }: { content: string }) {
   );
 }
 
+function ToolUseIndicator({ toolUses }: { toolUses: ToolUse[] }) {
+  if (toolUses.length === 0) return null;
+  return (
+    <div className="mb-3 flex flex-wrap gap-2">
+      {toolUses.map((t, i) => (
+        <span
+          key={`${t.tool}-${i}`}
+          className={cn(
+            "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium border",
+            t.status === "running"
+              ? "bg-blue-500/10 text-blue-300 border-blue-500/20"
+              : "bg-white/5 text-white/50 border-white/10",
+          )}
+        >
+          {t.status === "running" ? (
+            <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
+          ) : (
+            <span className="w-1.5 h-1.5 rounded-full bg-white/30" />
+          )}
+          {t.tool}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 function MessageToolbar({ modelName }: { modelName?: string }) {
     return (
         <div className="flex items-center gap-1 mb-2 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -200,6 +232,10 @@ export function MessageList({ messages, isTyping, onRetry }: MessageListProps) {
             >
               {msg.role === "assistant" && msg.thinking && (
                  <ThinkingBlock content={msg.thinking} />
+              )}
+
+              {msg.role === "assistant" && msg.toolUses && msg.toolUses.length > 0 && (
+                <ToolUseIndicator toolUses={msg.toolUses} />
               )}
 
               <div className={cn(

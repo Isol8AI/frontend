@@ -19,9 +19,15 @@ import { useGateway, type ChatIncomingMessage } from "@/hooks/useGateway";
 // Types
 // =============================================================================
 
+export interface ToolUse {
+  tool: string;
+  status: "running" | "done";
+}
+
 export interface AgentMessage {
   role: "user" | "assistant";
   content: string;
+  toolUses?: ToolUse[];
 }
 
 export interface UseAgentChatReturn {
@@ -37,6 +43,7 @@ interface InternalMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
+  toolUses?: ToolUse[];
 }
 
 // =============================================================================
@@ -103,6 +110,42 @@ export function useAgentChat(agentName: string | null): UseAgentChatReturn {
         setIsStreaming(false);
         currentAssistantIdRef.current = null;
         streamContentRef.current = "";
+        return;
+      }
+
+      if (msg.type === "tool_start") {
+        if (currentAssistantIdRef.current) {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === currentAssistantIdRef.current
+                ? {
+                    ...m,
+                    toolUses: [
+                      ...(m.toolUses || []),
+                      { tool: msg.tool, status: "running" as const },
+                    ],
+                  }
+                : m,
+            ),
+          );
+        }
+        return;
+      }
+
+      if (msg.type === "tool_end") {
+        if (currentAssistantIdRef.current) {
+          setMessages((prev) =>
+            prev.map((m) => {
+              if (m.id !== currentAssistantIdRef.current) return m;
+              const toolUses = (m.toolUses || []).map((t) =>
+                t.tool === msg.tool && t.status === "running"
+                  ? { ...t, status: "done" as const }
+                  : t,
+              );
+              return { ...m, toolUses };
+            }),
+          );
+        }
         return;
       }
 
@@ -196,9 +239,10 @@ export function useAgentChat(agentName: string | null): UseAgentChatReturn {
 
   // ---- External interface ----
 
-  const externalMessages: AgentMessage[] = messages.map(({ role, content }) => ({
+  const externalMessages: AgentMessage[] = messages.map(({ role, content, toolUses }) => ({
     role,
     content,
+    ...(toolUses?.length ? { toolUses } : {}),
   }));
 
   return {

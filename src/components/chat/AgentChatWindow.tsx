@@ -6,12 +6,15 @@ import { ChatInput } from "./ChatInput";
 import { MessageList } from "./MessageList";
 import { useAgentChat } from "@/hooks/useAgentChat";
 
+import type { ToolUse } from "@/hooks/useAgentChat";
+
 interface Message {
   id: string;
   role: "user" | "assistant";
   content: string;
   thinking?: string;
   model?: string;
+  toolUses?: ToolUse[];
 }
 
 interface AgentChatWindowProps {
@@ -62,6 +65,7 @@ export function AgentChatWindow({
         id: String(i),
         role: msg.role,
         content: msg.content,
+        ...(msg.toolUses?.length ? { toolUses: msg.toolUses } : {}),
       })),
     [chatMessages],
   );
