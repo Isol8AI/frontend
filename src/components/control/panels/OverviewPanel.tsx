@@ -1,8 +1,28 @@
 "use client";
 
-import { Loader2, RefreshCw, Wifi, WifiOff, Clock, Cpu, MessageSquare, Users } from "lucide-react";
+import {
+  Loader2,
+  RefreshCw,
+  Wifi,
+  WifiOff,
+  Clock,
+  Server,
+  MessageSquare,
+  Users,
+  Timer,
+  MapPin,
+  CreditCard,
+  Lightbulb,
+  Activity,
+} from "lucide-react";
 import { useContainerRpc } from "@/hooks/useContainerRpc";
+import { useContainerStatus } from "@/hooks/useContainerStatus";
+import { useBilling } from "@/hooks/useBilling";
 import { Button } from "@/components/ui/button";
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
 
 interface HealthAgent {
   agentId?: string;
@@ -20,17 +40,27 @@ interface HealthPayload {
   defaultAgentId?: string;
   agents?: HealthAgent[];
   sessions?: { count?: number; recent?: unknown[] };
+  tickInterval?: number;
+  lastChannelsRefresh?: number;
   [key: string]: unknown;
 }
 
-// The RPC response may be wrapped: { type: "event", event: "health", payload: {...} }
-// or it may be the payload directly.
 interface HealthResponse {
   type?: string;
   event?: string;
   payload?: HealthPayload;
   [key: string]: unknown;
 }
+
+interface CronJob {
+  name?: string;
+  enabled?: boolean;
+  [key: string]: unknown;
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
 function extractHealth(data: HealthResponse): HealthPayload {
   if (data.type === "event" && data.payload) {
@@ -41,8 +71,7 @@ function extractHealth(data: HealthResponse): HealthPayload {
 
 function formatUptime(ts: number | undefined): string {
   if (!ts) return "\u2014";
-  const now = Date.now();
-  const uptimeMs = now - ts;
+  const uptimeMs = Date.now() - ts;
   if (uptimeMs < 0) return "\u2014";
   const seconds = Math.floor(uptimeMs / 1000);
   const minutes = Math.floor(seconds / 60);
@@ -52,12 +81,42 @@ function formatUptime(ts: number | undefined): string {
   return `${minutes}m`;
 }
 
+function formatTimeAgo(ts: number | string | undefined | null): string {
+  if (!ts) return "\u2014";
+  const ms = typeof ts === "string" ? new Date(ts).getTime() : ts;
+  const ago = Date.now() - ms;
+  if (ago < 0) return "\u2014";
+  const minutes = Math.floor(ago / 60000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
+
 export function OverviewPanel() {
-  const { data: rawData, error, isLoading, mutate } = useContainerRpc<HealthResponse>(
-    "health",
-    undefined,
-    { refreshInterval: 10000 },
-  );
+  const {
+    data: rawHealth,
+    error: healthError,
+    isLoading: healthLoading,
+    mutate: refreshHealth,
+  } = useContainerRpc<HealthResponse>("health", undefined, { refreshInterval: 10000 });
+
+  const { container, isLoading: statusLoading, error: statusError } = useContainerStatus();
+  const { planTier } = useBilling();
+
+  const { data: cronData } = useContainerRpc<CronJob[]>("cron.list");
+
+  const isLoading = healthLoading && statusLoading;
+  const error = healthError || statusError;
+
+  const handleRefresh = () => {
+    refreshHealth();
+  };
 
   if (isLoading) {
     return (
@@ -67,103 +126,245 @@ export function OverviewPanel() {
     );
   }
 
-  if (error) {
+  if (error && !rawHealth && !container) {
     return (
       <div className="p-6 space-y-3">
         <p className="text-sm text-destructive">Failed to fetch status: {error.message}</p>
-        <Button variant="outline" size="sm" onClick={() => mutate()}>
+        <Button variant="outline" size="sm" onClick={handleRefresh}>
           <RefreshCw className="h-3.5 w-3.5 mr-1.5" /> Retry
         </Button>
       </div>
     );
   }
 
-  if (!rawData) {
+  if (!rawHealth && !container) {
     return (
-      <div className="p-6 text-sm text-muted-foreground">
-        No container available.
-      </div>
+      <div className="p-6 text-sm text-muted-foreground">No container available.</div>
     );
   }
 
-  const health = extractHealth(rawData);
+  const health = rawHealth ? extractHealth(rawHealth) : ({} as HealthPayload);
   const isOnline = health.ok === true;
   const sessionCount = health.sessions?.count;
   const agentCount = health.agents?.length;
-  const defaultAgent = health.defaultAgentId;
+  const cronEnabled = Array.isArray(cronData)
+    ? cronData.some((j) => j.enabled)
+    : false;
 
   return (
     <div className="p-6 space-y-6">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-lg font-semibold">Overview</h2>
-          <p className="text-xs text-muted-foreground">Gateway status and health snapshot.</p>
+          <p className="text-xs text-muted-foreground">
+            Container status and gateway health snapshot.
+          </p>
         </div>
-        <Button variant="ghost" size="sm" onClick={() => mutate()}>
+        <Button variant="ghost" size="sm" onClick={handleRefresh}>
           <RefreshCw className="h-3.5 w-3.5" />
         </Button>
       </div>
 
-      {/* Status Banner */}
-      <div className="flex items-center gap-3 rounded-lg border border-border p-4 bg-muted/20">
-        {isOnline ? (
-          <Wifi className="h-5 w-5 text-green-500" />
-        ) : (
-          <WifiOff className="h-5 w-5 text-red-500" />
-        )}
-        <div>
-          <div className="text-sm font-semibold">{isOnline ? "Online" : "Offline"}</div>
-          <div className="text-xs text-muted-foreground">
-            {defaultAgent ? `Default agent: ${defaultAgent}` : ""}
+      {/* Two-column: Container Info + Snapshot */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Container Info */}
+        <div className="rounded-lg border border-border p-4 space-y-3">
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Container Info
+          </h3>
+          <div className="space-y-2">
+            <InfoRow
+              icon={<Activity className="h-3.5 w-3.5" />}
+              label="Status"
+              value={container?.status ?? "\u2014"}
+              badge={container?.status === "running" ? "green" : container?.status === "provisioning" ? "yellow" : "red"}
+            />
+            <InfoRow
+              icon={<Server className="h-3.5 w-3.5" />}
+              label="Service"
+              value={container?.service_name ?? "\u2014"}
+            />
+            <InfoRow
+              icon={<CreditCard className="h-3.5 w-3.5" />}
+              label="Plan"
+              value={planTier}
+            />
+            <InfoRow
+              icon={<MapPin className="h-3.5 w-3.5" />}
+              label="Region"
+              value={container?.region ?? "\u2014"}
+            />
+            <InfoRow
+              icon={<Clock className="h-3.5 w-3.5" />}
+              label="Created"
+              value={formatTimeAgo(container?.created_at)}
+            />
+          </div>
+        </div>
+
+        {/* Snapshot */}
+        <div className="rounded-lg border border-border p-4 space-y-3">
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Snapshot
+          </h3>
+          <div className="space-y-2">
+            <InfoRow
+              icon={isOnline ? <Wifi className="h-3.5 w-3.5" /> : <WifiOff className="h-3.5 w-3.5" />}
+              label="Status"
+              value={isOnline ? "OK" : "Offline"}
+              badge={isOnline ? "green" : "red"}
+            />
+            <InfoRow
+              icon={<Clock className="h-3.5 w-3.5" />}
+              label="Uptime"
+              value={formatUptime(health.ts)}
+            />
+            <InfoRow
+              icon={<Timer className="h-3.5 w-3.5" />}
+              label="Tick Interval"
+              value={
+                health.heartbeatSeconds
+                  ? `${health.heartbeatSeconds}s`
+                  : health.tickInterval
+                    ? `${health.tickInterval}s`
+                    : "\u2014"
+              }
+            />
+            <InfoRow
+              icon={<RefreshCw className="h-3.5 w-3.5" />}
+              label="Last Channels"
+              value={formatTimeAgo(health.lastChannelsRefresh)}
+            />
           </div>
         </div>
       </div>
 
-      {/* Metrics Grid */}
-      <div className="grid grid-cols-2 gap-3">
-        <MetricCard
-          icon={Clock}
-          label="Uptime"
-          value={formatUptime(health.ts)}
+      {/* Summary Row */}
+      <div className="grid grid-cols-3 gap-3">
+        <SummaryCard
+          icon={Users}
+          label="Instances"
+          value={agentCount !== undefined ? String(agentCount) : "\u2014"}
         />
-        <MetricCard
-          icon={Cpu}
-          label="Status"
-          value={isOnline ? "healthy" : "unknown"}
-        />
-        <MetricCard
+        <SummaryCard
           icon={MessageSquare}
           label="Sessions"
           value={sessionCount !== undefined ? String(sessionCount) : "\u2014"}
         />
-        <MetricCard
-          icon={Users}
-          label="Agents"
-          value={agentCount !== undefined ? String(agentCount) : "\u2014"}
+        <SummaryCard
+          icon={Activity}
+          label="Cron"
+          value={cronEnabled ? "Enabled" : "Disabled"}
         />
       </div>
 
-      {/* Raw Data (collapsed) */}
-      <details className="group">
-        <summary className="text-xs text-muted-foreground/60 cursor-pointer hover:text-muted-foreground">
-          Raw health data
-        </summary>
-        <pre className="mt-2 text-xs bg-muted/30 rounded-lg p-3 overflow-auto max-h-64">
-          {JSON.stringify(rawData, null, 2)}
-        </pre>
-      </details>
+      {/* Notes / Tips */}
+      <div className="space-y-3">
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          Notes
+        </h3>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <TipCard
+            icon={Lightbulb}
+            title="Agent Chat"
+            body="Use the Channels panel to connect WhatsApp, Telegram, Discord, and more."
+          />
+          <TipCard
+            icon={Lightbulb}
+            title="Cron Jobs"
+            body="Schedule recurring tasks from the Cron panel to automate agent workflows."
+          />
+          <TipCard
+            icon={Lightbulb}
+            title="Session History"
+            body="View and manage conversation sessions in the Sessions panel."
+          />
+        </div>
+      </div>
     </div>
   );
 }
 
-function MetricCard({ icon: Icon, label, value }: { icon: typeof Clock; label: string; value: string }) {
+// ---------------------------------------------------------------------------
+// Sub-components
+// ---------------------------------------------------------------------------
+
+function InfoRow({
+  icon,
+  label,
+  value,
+  badge,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  badge?: "green" | "yellow" | "red";
+}) {
+  const badgeClass =
+    badge === "green"
+      ? "text-green-600 bg-green-500/10"
+      : badge === "yellow"
+        ? "text-yellow-600 bg-yellow-500/10"
+        : badge === "red"
+          ? "text-red-600 bg-red-500/10"
+          : "";
+
   return (
-    <div className="rounded-lg border border-border p-3">
-      <div className="flex items-center gap-1.5 mb-1">
+    <div className="flex items-center justify-between text-sm">
+      <div className="flex items-center gap-2 text-muted-foreground">
+        {icon}
+        <span>{label}</span>
+      </div>
+      {badge ? (
+        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${badgeClass}`}>
+          {value}
+        </span>
+      ) : (
+        <span className="font-medium truncate max-w-[180px]">{value}</span>
+      )}
+    </div>
+  );
+}
+
+function SummaryCard({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: typeof Clock;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-lg border border-border p-3 text-center">
+      <div className="flex items-center justify-center gap-1.5 mb-1">
         <Icon className="h-3 w-3 text-muted-foreground/60" />
-        <span className="text-[10px] uppercase tracking-wider text-muted-foreground/60">{label}</span>
+        <span className="text-[10px] uppercase tracking-wider text-muted-foreground/60">
+          {label}
+        </span>
       </div>
       <div className="text-sm font-medium">{value}</div>
+    </div>
+  );
+}
+
+function TipCard({
+  icon: Icon,
+  title,
+  body,
+}: {
+  icon: typeof Lightbulb;
+  title: string;
+  body: string;
+}) {
+  return (
+    <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-1">
+      <div className="flex items-center gap-1.5">
+        <Icon className="h-3.5 w-3.5 text-muted-foreground/60" />
+        <span className="text-xs font-semibold">{title}</span>
+      </div>
+      <p className="text-xs text-muted-foreground leading-relaxed">{body}</p>
     </div>
   );
 }
