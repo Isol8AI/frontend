@@ -187,7 +187,27 @@ export function ChannelsPanel() {
     );
   }
 
-  const channels: ChannelStatus[] = Array.isArray(data) ? data : [];
+  const rpcChannels: ChannelStatus[] = Array.isArray(data) ? data : [];
+
+  // Build a map of RPC channel data keyed by normalized name
+  const rpcMap = new Map<string, ChannelStatus>();
+  for (const ch of rpcChannels) {
+    rpcMap.set(ch.name.toLowerCase().replace(/[^a-z]/g, ""), ch);
+  }
+
+  // Always show all channels from CHANNEL_META, merging in RPC data if available.
+  // Then append any extra channels from RPC that aren't in the meta map.
+  const channels: ChannelStatus[] = [
+    ...Object.entries(CHANNEL_META).map(([key, meta]) => {
+      const rpc = rpcMap.get(key);
+      return rpc
+        ? rpc
+        : { name: key, configured: false, enabled: false, running: false };
+    }),
+    ...rpcChannels.filter(
+      (ch) => !CHANNEL_META[ch.name.toLowerCase().replace(/[^a-z]/g, "")],
+    ),
+  ];
 
   // Extract channel health from the health RPC
   const channelHealth = (() => {
@@ -212,15 +232,11 @@ export function ChannelsPanel() {
       </div>
 
       {/* Channel cards */}
-      {channels.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No channels configured.</p>
-      ) : (
-        <div className="space-y-4">
-          {channels.map((ch) => (
-            <ChannelCard key={ch.name} channel={ch} onRefresh={mutate} />
-          ))}
-        </div>
-      )}
+      <div className="space-y-4">
+        {channels.map((ch) => (
+          <ChannelCard key={ch.name} channel={ch} onRefresh={mutate} />
+        ))}
+      </div>
 
       {/* Channel Health */}
       {channelHealth && <ChannelHealthSection data={channelHealth} />}
