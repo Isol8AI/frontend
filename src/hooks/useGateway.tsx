@@ -6,6 +6,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ReactNode,
@@ -86,6 +87,7 @@ export function GatewayProvider({ children }: { children: ReactNode }) {
   const pendingRpcsRef = useRef<Map<string, PendingRpc>>(new Map());
   const eventHandlersRef = useRef<Set<(event: string, data: unknown) => void>>(new Set());
   const chatHandlersRef = useRef<Set<(msg: ChatIncomingMessage) => void>>(new Set());
+  const connectRef = useRef<() => Promise<void>>();
 
   // ---- Cleanup helpers ----
 
@@ -220,7 +222,7 @@ export function GatewayProvider({ children }: { children: ReactNode }) {
           const delay =
             RECONNECT_DELAYS[reconnectAttemptRef.current] || 16000;
           reconnectAttemptRef.current++;
-          reconnectTimeoutRef.current = setTimeout(() => connect(), delay);
+          reconnectTimeoutRef.current = setTimeout(() => connectRef.current?.(), delay);
         } else {
           setError("Connection lost. Please refresh the page.");
         }
@@ -233,6 +235,9 @@ export function GatewayProvider({ children }: { children: ReactNode }) {
       setError(err instanceof Error ? err.message : "Failed to connect");
     }
   }, [getToken, handleMessage, clearPingInterval]);
+
+  // Keep ref in sync for stable reconnect closure
+  connectRef.current = connect;
 
   // ---- Auto-connect on mount ----
 
@@ -252,22 +257,30 @@ export function GatewayProvider({ children }: { children: ReactNode }) {
 
   const sendReq = useCallback(
     async (method: string, params?: Record<string, unknown>): Promise<unknown> => {
-      // Ensure connected
+      // Ensure connected — use event listener instead of polling
       if (wsRef.current?.readyState !== WebSocket.OPEN) {
         await connect();
         await new Promise<void>((resolve, reject) => {
-          const timeout = setTimeout(
-            () => reject(new Error("Connection timeout")),
-            CONNECTION_TIMEOUT_MS,
-          );
-          const check = setInterval(() => {
-            if (wsRef.current?.readyState === WebSocket.OPEN) {
-              clearTimeout(timeout);
-              clearInterval(check);
-              resolve();
-            }
-          }, 100);
+          const ws = wsRef.current;
+          if (!ws) return reject(new Error("No WebSocket"));
+          if (ws.readyState === WebSocket.OPEN) return resolve();
+
+          const timeout = setTimeout(() => {
+            ws.removeEventListener("open", onOpen);
+            reject(new Error("Connection timeout"));
+          }, CONNECTION_TIMEOUT_MS);
+
+          function onOpen() {
+            clearTimeout(timeout);
+            resolve();
+          }
+          ws.addEventListener("open", onOpen, { once: true });
         });
+      }
+
+      const ws = wsRef.current;
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        throw new Error("WebSocket closed before send");
       }
 
       const id = crypto.randomUUID();
@@ -280,7 +293,7 @@ export function GatewayProvider({ children }: { children: ReactNode }) {
 
         pendingRpcsRef.current.set(id, { resolve, reject, timeout });
 
-        wsRef.current!.send(
+        ws.send(
           JSON.stringify({ type: "req", id, method, params: params || {} }),
         );
       });
@@ -327,10 +340,13 @@ export function GatewayProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  const value = useMemo(
+    () => ({ isConnected, error, sendReq, sendChat, onEvent, onChatMessage }),
+    [isConnected, error, sendReq, sendChat, onEvent, onChatMessage],
+  );
+
   return (
-    <GatewayContext.Provider
-      value={{ isConnected, error, sendReq, sendChat, onEvent, onChatMessage }}
-    >
+    <GatewayContext.Provider value={value}>
       {children}
     </GatewayContext.Provider>
   );
