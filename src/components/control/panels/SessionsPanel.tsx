@@ -1,7 +1,7 @@
 "use client";
 
 import { Loader2, RefreshCw, Trash2, MessageSquare } from "lucide-react";
-import { useContainerRpc, useContainerRpcMutation } from "@/hooks/useContainerRpc";
+import { useGatewayRpc, useGatewayRpcMutation } from "@/hooks/useGatewayRpc";
 import { Button } from "@/components/ui/button";
 
 interface Session {
@@ -20,11 +20,11 @@ interface SessionsResponse {
 }
 
 export function SessionsPanel() {
-  const { data: rawData, error, isLoading, mutate } = useContainerRpc<SessionsResponse | Session[]>(
+  const { data: rawData, error, isLoading, mutate } = useGatewayRpc<SessionsResponse | Session[]>(
     "sessions.list",
     { includeDerivedTitles: true, includeLastMessage: true },
   );
-  const callRpc = useContainerRpcMutation();
+  const callRpc = useGatewayRpcMutation();
 
   const handleDelete = async (key: string) => {
     try {

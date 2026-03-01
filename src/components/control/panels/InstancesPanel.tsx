@@ -1,7 +1,7 @@
 "use client";
 
 import { Loader2, RefreshCw, Monitor } from "lucide-react";
-import { useContainerRpc } from "@/hooks/useContainerRpc";
+import { useGatewayRpc } from "@/hooks/useGatewayRpc";
 import { Button } from "@/components/ui/button";
 
 interface Instance {
@@ -13,7 +13,7 @@ interface Instance {
 }
 
 export function InstancesPanel() {
-  const { data, error, isLoading, mutate } = useContainerRpc<Instance[]>("node.list");
+  const { data, error, isLoading, mutate } = useGatewayRpc<Instance[]>("node.list");
 
   if (isLoading) {
     return (

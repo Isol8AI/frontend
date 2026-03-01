@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Loader2, RefreshCw, Sparkles, Search } from "lucide-react";
-import { useContainerRpc } from "@/hooks/useContainerRpc";
+import { useGatewayRpc } from "@/hooks/useGatewayRpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -15,7 +15,7 @@ interface Skill {
 }
 
 export function SkillsPanel() {
-  const { data, error, isLoading, mutate } = useContainerRpc<Skill[]>("skills.status");
+  const { data, error, isLoading, mutate } = useGatewayRpc<Skill[]>("skills.status");
   const [filter, setFilter] = useState("");
 
   if (isLoading) {

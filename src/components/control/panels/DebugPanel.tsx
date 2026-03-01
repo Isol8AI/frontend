@@ -1,11 +1,11 @@
 "use client";
 
 import { Loader2, RefreshCw } from "lucide-react";
-import { useContainerRpc } from "@/hooks/useContainerRpc";
+import { useGatewayRpc } from "@/hooks/useGatewayRpc";
 import { Button } from "@/components/ui/button";
 
 export function DebugPanel() {
-  const { data, error, isLoading, mutate } = useContainerRpc<unknown>("status");
+  const { data, error, isLoading, mutate } = useGatewayRpc<unknown>("status");
 
   if (isLoading) {
     return (

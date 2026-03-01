@@ -15,7 +15,7 @@ import {
   Lightbulb,
   Activity,
 } from "lucide-react";
-import { useContainerRpc } from "@/hooks/useContainerRpc";
+import { useGatewayRpc } from "@/hooks/useGatewayRpc";
 import { useContainerStatus } from "@/hooks/useContainerStatus";
 import { useBilling } from "@/hooks/useBilling";
 import { Button } from "@/components/ui/button";
@@ -104,12 +104,12 @@ export function OverviewPanel() {
     error: healthError,
     isLoading: healthLoading,
     mutate: refreshHealth,
-  } = useContainerRpc<HealthResponse>("health", undefined, { refreshInterval: 10000 });
+  } = useGatewayRpc<HealthResponse>("health", undefined, { refreshInterval: 10000 });
 
   const { container, isLoading: statusLoading, error: statusError } = useContainerStatus();
   const { planTier } = useBilling();
 
-  const { data: cronData } = useContainerRpc<CronJob[]>("cron.list");
+  const { data: cronData } = useGatewayRpc<CronJob[]>("cron.list");
 
   const isLoading = healthLoading && statusLoading;
   const error = healthError || statusError;

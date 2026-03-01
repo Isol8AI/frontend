@@ -11,7 +11,7 @@ import {
   ChevronDown,
   ChevronRight,
 } from "lucide-react";
-import { useContainerRpc, useContainerRpcMutation } from "@/hooks/useContainerRpc";
+import { useGatewayRpc, useGatewayRpcMutation } from "@/hooks/useGatewayRpc";
 import { Button } from "@/components/ui/button";
 
 // ---------------------------------------------------------------------------
@@ -165,8 +165,8 @@ function getMetaForChannel(ch: ChannelStatus): ChannelMeta {
 // ---------------------------------------------------------------------------
 
 export function ChannelsPanel() {
-  const { data, error, isLoading, mutate } = useContainerRpc<ChannelStatus[]>("channels.status");
-  const { data: healthData } = useContainerRpc<HealthResponse>("health", undefined, { refreshInterval: 10000 });
+  const { data, error, isLoading, mutate } = useGatewayRpc<ChannelStatus[]>("channels.status");
+  const { data: healthData } = useGatewayRpc<HealthResponse>("health", undefined, { refreshInterval: 10000 });
 
   if (isLoading) {
     return (
@@ -255,7 +255,7 @@ function ChannelCard({
   channel: ChannelStatus;
   onRefresh: () => void;
 }) {
-  const callRpc = useContainerRpcMutation();
+  const callRpc = useGatewayRpcMutation();
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
 
   const meta = getMetaForChannel(channel);

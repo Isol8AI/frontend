@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Loader2, RefreshCw } from "lucide-react";
-import { useContainerRpc } from "@/hooks/useContainerRpc";
+import { useGatewayRpc } from "@/hooks/useGatewayRpc";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -85,7 +85,7 @@ function extractLogFields(entry: LogEntry): { time: string; level: string; sourc
 
 export function LogsPanel() {
   const [level, setLevel] = useState<string>("info");
-  const { data: rawData, error, isLoading, mutate } = useContainerRpc<LogsResponse | unknown[]>(
+  const { data: rawData, error, isLoading, mutate } = useGatewayRpc<LogsResponse | unknown[]>(
     "logs.tail",
     { limit: 200 },
     { refreshInterval: 5000 },

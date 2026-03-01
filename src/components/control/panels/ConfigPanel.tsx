@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Loader2, RefreshCw, Save } from "lucide-react";
-import { useContainerRpc, useContainerRpcMutation } from "@/hooks/useContainerRpc";
+import { useGatewayRpc, useGatewayRpcMutation } from "@/hooks/useGatewayRpc";
 import { Button } from "@/components/ui/button";
 
 interface ConfigResponse {
@@ -11,8 +11,8 @@ interface ConfigResponse {
 }
 
 export function ConfigPanel() {
-  const { data: rawData, error, isLoading, mutate } = useContainerRpc<ConfigResponse | Record<string, unknown>>("config.get");
-  const callRpc = useContainerRpcMutation();
+  const { data: rawData, error, isLoading, mutate } = useGatewayRpc<ConfigResponse | Record<string, unknown>>("config.get");
+  const callRpc = useGatewayRpcMutation();
   const [editing, setEditing] = useState(false);
   const [rawJson, setRawJson] = useState("");
   const [saving, setSaving] = useState(false);

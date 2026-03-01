@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { ChatLayout } from "@/components/chat/ChatLayout";
 import { AgentChatWindow } from "@/components/chat/AgentChatWindow";
 import { ControlPanelRouter } from "@/components/control/ControlPanelRouter";
+import { GatewayProvider } from "@/hooks/useGateway";
 
 export default function ChatPage() {
   const [selectedAgent, setSelectedAgent] = useState<string>("main");
@@ -24,17 +25,19 @@ export default function ChatPage() {
   }, []);
 
   return (
-    <ChatLayout
-      activeView={activeView}
-      onViewChange={setActiveView}
-      activePanel={activePanel}
-      onPanelChange={setActivePanel}
-    >
-      {activeView === "chat" ? (
-        <AgentChatWindow agentName={selectedAgent} />
-      ) : (
-        <ControlPanelRouter panel={activePanel} />
-      )}
-    </ChatLayout>
+    <GatewayProvider>
+      <ChatLayout
+        activeView={activeView}
+        onViewChange={setActiveView}
+        activePanel={activePanel}
+        onPanelChange={setActivePanel}
+      >
+        {activeView === "chat" ? (
+          <AgentChatWindow agentName={selectedAgent} />
+        ) : (
+          <ControlPanelRouter panel={activePanel} />
+        )}
+      </ChatLayout>
+    </GatewayProvider>
   );
 }

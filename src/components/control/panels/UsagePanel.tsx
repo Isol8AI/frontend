@@ -1,7 +1,7 @@
 "use client";
 
 import { Loader2, RefreshCw } from "lucide-react";
-import { useContainerRpc } from "@/hooks/useContainerRpc";
+import { useGatewayRpc } from "@/hooks/useGatewayRpc";
 import { Button } from "@/components/ui/button";
 
 interface UsageData {
@@ -18,7 +18,7 @@ interface UsageData {
 }
 
 export function UsagePanel() {
-  const { data, error, isLoading, mutate } = useContainerRpc<UsageData>("usage.cost");
+  const { data, error, isLoading, mutate } = useGatewayRpc<UsageData>("usage.cost");
 
   if (isLoading) {
     return (

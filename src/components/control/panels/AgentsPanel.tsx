@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Loader2, RefreshCw, Bot, FileText, Wrench, Sparkles, User } from "lucide-react";
-import { useContainerRpc } from "@/hooks/useContainerRpc";
+import { useGatewayRpc } from "@/hooks/useGatewayRpc";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -29,7 +29,7 @@ interface AgentsListResponse {
 }
 
 export function AgentsPanel() {
-  const { data: rawData, error, isLoading, mutate } = useContainerRpc<AgentsListResponse>("agents.list");
+  const { data: rawData, error, isLoading, mutate } = useGatewayRpc<AgentsListResponse>("agents.list");
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<AgentTab>("overview");
 
@@ -150,7 +150,7 @@ function AgentTabContent({ agentId, agent, tab }: { agentId: string; agent?: Age
 }
 
 function AgentOverviewTab({ agentId, agent }: { agentId: string; agent?: AgentEntry }) {
-  const { data } = useContainerRpc<Record<string, unknown>>(
+  const { data } = useGatewayRpc<Record<string, unknown>>(
     "agent.identity.get",
     { agentId },
   );
@@ -185,7 +185,7 @@ function AgentOverviewTab({ agentId, agent }: { agentId: string; agent?: AgentEn
 }
 
 function AgentDataTab({ method, params, tab }: { method: string; params?: Record<string, unknown>; tab: string }) {
-  const { data, isLoading } = useContainerRpc<unknown>(method, params);
+  const { data, isLoading } = useGatewayRpc<unknown>(method, params);
 
   if (isLoading) {
     return <Loader2 className="h-4 w-4 animate-spin text-muted-foreground mt-4" />;

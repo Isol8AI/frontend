@@ -1,7 +1,7 @@
 "use client";
 
 import { Loader2, RefreshCw, Clock, Play } from "lucide-react";
-import { useContainerRpc, useContainerRpcMutation } from "@/hooks/useContainerRpc";
+import { useGatewayRpc, useGatewayRpcMutation } from "@/hooks/useGatewayRpc";
 import { Button } from "@/components/ui/button";
 
 interface CronJob {
@@ -14,8 +14,8 @@ interface CronJob {
 }
 
 export function CronPanel() {
-  const { data, error, isLoading, mutate } = useContainerRpc<CronJob[]>("cron.list");
-  const callRpc = useContainerRpcMutation();
+  const { data, error, isLoading, mutate } = useGatewayRpc<CronJob[]>("cron.list");
+  const callRpc = useGatewayRpcMutation();
 
   const handleToggle = async (id: string, currentlyEnabled: boolean) => {
     const method = currentlyEnabled ? "cron.disable" : "cron.enable";

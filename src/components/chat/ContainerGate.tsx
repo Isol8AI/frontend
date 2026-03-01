@@ -1,7 +1,7 @@
 "use client";
 
 import { Loader2 } from "lucide-react";
-import { useContainerRpc } from "@/hooks/useContainerRpc";
+import { useGatewayRpc } from "@/hooks/useGatewayRpc";
 
 /**
  * Gates child content until the user's container gateway is healthy.
@@ -16,7 +16,7 @@ export function ContainerGate({
 }: {
   children: React.ReactNode;
 }) {
-  const { data, error, isLoading } = useContainerRpc<Record<string, unknown>>(
+  const { data, error, isLoading } = useGatewayRpc<Record<string, unknown>>(
     "health",
     undefined,
     { refreshInterval: 3000, dedupingInterval: 2000 },
