@@ -4,30 +4,56 @@ import { Loader2, RefreshCw, Wifi, WifiOff, Clock, Cpu, MessageSquare, Users } f
 import { useContainerRpc } from "@/hooks/useContainerRpc";
 import { Button } from "@/components/ui/button";
 
-interface HealthData {
-  status?: string;
-  uptime?: string | number;
-  version?: string;
-  ts?: number;
-  models?: { primary?: string; fallbacks?: string[] };
-  sessions?: { active?: number; total?: number };
-  agents?: { count?: number; default?: string };
-  cron?: { enabled?: boolean; nextRun?: string };
+interface HealthAgent {
+  agentId?: string;
+  isDefault?: boolean;
+  sessions?: { count?: number; recent?: unknown[] };
   [key: string]: unknown;
 }
 
-function formatUptime(uptime: string | number | undefined): string {
-  if (!uptime) return "\u2014";
-  if (typeof uptime === "string") return uptime;
-  const hours = Math.floor(uptime / 3600);
-  const minutes = Math.floor((uptime % 3600) / 60);
+interface HealthPayload {
+  ok?: boolean;
+  ts?: number;
+  durationMs?: number;
+  channels?: Record<string, unknown>;
+  heartbeatSeconds?: number;
+  defaultAgentId?: string;
+  agents?: HealthAgent[];
+  sessions?: { count?: number; recent?: unknown[] };
+  [key: string]: unknown;
+}
+
+// The RPC response may be wrapped: { type: "event", event: "health", payload: {...} }
+// or it may be the payload directly.
+interface HealthResponse {
+  type?: string;
+  event?: string;
+  payload?: HealthPayload;
+  [key: string]: unknown;
+}
+
+function extractHealth(data: HealthResponse): HealthPayload {
+  if (data.type === "event" && data.payload) {
+    return data.payload;
+  }
+  return data as HealthPayload;
+}
+
+function formatUptime(ts: number | undefined): string {
+  if (!ts) return "\u2014";
+  const now = Date.now();
+  const uptimeMs = now - ts;
+  if (uptimeMs < 0) return "\u2014";
+  const seconds = Math.floor(uptimeMs / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
   if (hours > 24) return `${Math.floor(hours / 24)}d ${hours % 24}h`;
-  if (hours > 0) return `${hours}h ${minutes}m`;
+  if (hours > 0) return `${hours}h ${minutes % 60}m`;
   return `${minutes}m`;
 }
 
 export function OverviewPanel() {
-  const { data, error, isLoading, mutate } = useContainerRpc<HealthData>(
+  const { data: rawData, error, isLoading, mutate } = useContainerRpc<HealthResponse>(
     "health",
     undefined,
     { refreshInterval: 10000 },
@@ -52,7 +78,7 @@ export function OverviewPanel() {
     );
   }
 
-  if (!data) {
+  if (!rawData) {
     return (
       <div className="p-6 text-sm text-muted-foreground">
         No container available.
@@ -60,8 +86,11 @@ export function OverviewPanel() {
     );
   }
 
-  const status = data.status as string | undefined;
-  const isOnline = status === "ok" || status === "running" || status === "healthy";
+  const health = extractHealth(rawData);
+  const isOnline = health.ok === true;
+  const sessionCount = health.sessions?.count;
+  const agentCount = health.agents?.length;
+  const defaultAgent = health.defaultAgentId;
 
   return (
     <div className="p-6 space-y-6">
@@ -85,7 +114,7 @@ export function OverviewPanel() {
         <div>
           <div className="text-sm font-semibold">{isOnline ? "Online" : "Offline"}</div>
           <div className="text-xs text-muted-foreground">
-            {data.version ? `Version ${data.version}` : ""}
+            {defaultAgent ? `Default agent: ${defaultAgent}` : ""}
           </div>
         </div>
       </div>
@@ -95,22 +124,22 @@ export function OverviewPanel() {
         <MetricCard
           icon={Clock}
           label="Uptime"
-          value={formatUptime(data.uptime)}
+          value={formatUptime(health.ts)}
         />
         <MetricCard
           icon={Cpu}
           label="Status"
-          value={String(status || "unknown")}
+          value={isOnline ? "healthy" : "unknown"}
         />
         <MetricCard
           icon={MessageSquare}
           label="Sessions"
-          value={data.sessions?.active !== undefined ? String(data.sessions.active) : "\u2014"}
+          value={sessionCount !== undefined ? String(sessionCount) : "\u2014"}
         />
         <MetricCard
           icon={Users}
           label="Agents"
-          value={data.agents?.count !== undefined ? String(data.agents.count) : "\u2014"}
+          value={agentCount !== undefined ? String(agentCount) : "\u2014"}
         />
       </div>
 
@@ -120,7 +149,7 @@ export function OverviewPanel() {
           Raw health data
         </summary>
         <pre className="mt-2 text-xs bg-muted/30 rounded-lg p-3 overflow-auto max-h-64">
-          {JSON.stringify(data, null, 2)}
+          {JSON.stringify(rawData, null, 2)}
         </pre>
       </details>
     </div>
