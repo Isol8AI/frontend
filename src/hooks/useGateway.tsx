@@ -87,7 +87,7 @@ export function GatewayProvider({ children }: { children: ReactNode }) {
   const pendingRpcsRef = useRef<Map<string, PendingRpc>>(new Map());
   const eventHandlersRef = useRef<Set<(event: string, data: unknown) => void>>(new Set());
   const chatHandlersRef = useRef<Set<(msg: ChatIncomingMessage) => void>>(new Set());
-  const connectRef = useRef<() => Promise<void>>();
+  const connectRef = useRef<(() => Promise<void>) | undefined>(undefined);
 
   // ---- Cleanup helpers ----
 
