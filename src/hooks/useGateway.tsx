@@ -1,0 +1,349 @@
+// frontend/src/hooks/useGateway.tsx
+"use client";
+
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import { useAuth } from "@clerk/nextjs";
+
+// =============================================================================
+// Constants
+// =============================================================================
+
+const MAX_RECONNECT_ATTEMPTS = 5;
+const RECONNECT_DELAYS = [1000, 2000, 4000, 8000, 16000];
+const PING_INTERVAL_MS = 30000;
+const CONNECTION_TIMEOUT_MS = 10000;
+const RPC_TIMEOUT_MS = 30000;
+
+function getWebSocketUrl(): string {
+  if (process.env.NEXT_PUBLIC_WS_URL) {
+    return process.env.NEXT_PUBLIC_WS_URL;
+  }
+  const apiUrl =
+    process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+  return apiUrl
+    .replace(/^https:\/\//, "wss://")
+    .replace(/^http:\/\//, "ws://")
+    .replace("api-", "ws-")
+    .replace(/\/api\/v1$/, "");
+}
+
+// =============================================================================
+// Types
+// =============================================================================
+
+/** Chat message types received from backend */
+export type ChatIncomingMessage =
+  | { type: "chunk"; content: string }
+  | { type: "done" }
+  | { type: "error"; message: string }
+  | { type: "heartbeat" };
+
+/** Gateway event forwarded from OpenClaw */
+export interface GatewayEvent {
+  type: "event";
+  event: string;
+  payload: unknown;
+}
+
+interface PendingRpc {
+  resolve: (value: unknown) => void;
+  reject: (reason: Error) => void;
+  timeout: ReturnType<typeof setTimeout>;
+}
+
+interface GatewayContextValue {
+  isConnected: boolean;
+  error: string | null;
+  sendReq: (method: string, params?: Record<string, unknown>) => Promise<unknown>;
+  sendChat: (agentName: string, message: string) => void;
+  onEvent: (handler: (event: string, data: unknown) => void) => () => void;
+  onChatMessage: (handler: (msg: ChatIncomingMessage) => void) => () => void;
+}
+
+const GatewayContext = createContext<GatewayContextValue | null>(null);
+
+// =============================================================================
+// Provider
+// =============================================================================
+
+export function GatewayProvider({ children }: { children: ReactNode }) {
+  const { getToken } = useAuth();
+  const [isConnected, setIsConnected] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const wsRef = useRef<WebSocket | null>(null);
+  const reconnectAttemptRef = useRef(0);
+  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pendingRpcsRef = useRef<Map<string, PendingRpc>>(new Map());
+  const eventHandlersRef = useRef<Set<(event: string, data: unknown) => void>>(new Set());
+  const chatHandlersRef = useRef<Set<(msg: ChatIncomingMessage) => void>>(new Set());
+
+  // ---- Cleanup helpers ----
+
+  const clearPingInterval = useCallback(() => {
+    if (pingIntervalRef.current) {
+      clearInterval(pingIntervalRef.current);
+      pingIntervalRef.current = null;
+    }
+  }, []);
+
+  const clearReconnectTimeout = useCallback(() => {
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
+    }
+  }, []);
+
+  // ---- Message router ----
+
+  const handleMessage = useCallback((event: MessageEvent) => {
+    if (!event.data || typeof event.data !== "string") return;
+    let data: Record<string, unknown>;
+    try {
+      data = JSON.parse(event.data);
+    } catch {
+      return;
+    }
+
+    const msgType = data.type as string;
+
+    // OpenClaw res — resolve pending RPC
+    if (msgType === "res" && typeof data.id === "string") {
+      const pending = pendingRpcsRef.current.get(data.id);
+      if (pending) {
+        clearTimeout(pending.timeout);
+        pendingRpcsRef.current.delete(data.id);
+        if (data.ok) {
+          pending.resolve(data.payload);
+        } else {
+          const errMsg =
+            (data.error as Record<string, unknown>)?.message || "RPC call failed";
+          pending.reject(new Error(String(errMsg)));
+        }
+      }
+      return;
+    }
+
+    // OpenClaw event — dispatch to subscribers
+    if (msgType === "event") {
+      const eventName = data.event as string;
+      for (const handler of eventHandlersRef.current) {
+        try {
+          handler(eventName, data.payload);
+        } catch {
+          // subscriber error, ignore
+        }
+      }
+      return;
+    }
+
+    // Chat messages — dispatch to subscribers
+    if (
+      msgType === "chunk" ||
+      msgType === "done" ||
+      msgType === "error" ||
+      msgType === "heartbeat"
+    ) {
+      const chatMsg = data as unknown as ChatIncomingMessage;
+      for (const handler of chatHandlersRef.current) {
+        try {
+          handler(chatMsg);
+        } catch {
+          // subscriber error, ignore
+        }
+      }
+      return;
+    }
+
+    // pong — nothing to do
+  }, []);
+
+  // ---- Connect ----
+
+  const connect = useCallback(async () => {
+    if (
+      wsRef.current?.readyState === WebSocket.OPEN ||
+      wsRef.current?.readyState === WebSocket.CONNECTING
+    ) {
+      return;
+    }
+
+    try {
+      const token = await getToken();
+      if (!token) throw new Error("Not authenticated");
+
+      const wsUrl = getWebSocketUrl();
+      const ws = new WebSocket(`${wsUrl}?token=${token}`);
+
+      ws.onopen = () => {
+        reconnectAttemptRef.current = 0;
+        setIsConnected(true);
+        setError(null);
+
+        clearPingInterval();
+        pingIntervalRef.current = setInterval(() => {
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: "ping" }));
+          }
+        }, PING_INTERVAL_MS);
+      };
+
+      ws.onclose = (event) => {
+        wsRef.current = null;
+        setIsConnected(false);
+        clearPingInterval();
+
+        // Reject all pending RPCs
+        for (const [id, pending] of pendingRpcsRef.current) {
+          clearTimeout(pending.timeout);
+          pending.reject(new Error("WebSocket closed"));
+        }
+        pendingRpcsRef.current.clear();
+
+        if (event.code === 1000 || event.code === 4001) {
+          if (event.code === 4001) {
+            setError("Authentication failed. Please refresh the page.");
+          }
+          return;
+        }
+
+        if (reconnectAttemptRef.current < MAX_RECONNECT_ATTEMPTS) {
+          const delay =
+            RECONNECT_DELAYS[reconnectAttemptRef.current] || 16000;
+          reconnectAttemptRef.current++;
+          reconnectTimeoutRef.current = setTimeout(() => connect(), delay);
+        } else {
+          setError("Connection lost. Please refresh the page.");
+        }
+      };
+
+      ws.onerror = () => {};
+      ws.onmessage = handleMessage;
+      wsRef.current = ws;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to connect");
+    }
+  }, [getToken, handleMessage, clearPingInterval]);
+
+  // ---- Auto-connect on mount ----
+
+  useEffect(() => {
+    connect();
+    return () => {
+      clearReconnectTimeout();
+      clearPingInterval();
+      if (wsRef.current) {
+        wsRef.current.close(1000, "Provider unmounted");
+        wsRef.current = null;
+      }
+    };
+  }, [connect, clearReconnectTimeout, clearPingInterval]);
+
+  // ---- sendReq ----
+
+  const sendReq = useCallback(
+    async (method: string, params?: Record<string, unknown>): Promise<unknown> => {
+      // Ensure connected
+      if (wsRef.current?.readyState !== WebSocket.OPEN) {
+        await connect();
+        await new Promise<void>((resolve, reject) => {
+          const timeout = setTimeout(
+            () => reject(new Error("Connection timeout")),
+            CONNECTION_TIMEOUT_MS,
+          );
+          const check = setInterval(() => {
+            if (wsRef.current?.readyState === WebSocket.OPEN) {
+              clearTimeout(timeout);
+              clearInterval(check);
+              resolve();
+            }
+          }, 100);
+        });
+      }
+
+      const id = crypto.randomUUID();
+
+      return new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          pendingRpcsRef.current.delete(id);
+          reject(new Error(`RPC timeout: ${method}`));
+        }, RPC_TIMEOUT_MS);
+
+        pendingRpcsRef.current.set(id, { resolve, reject, timeout });
+
+        wsRef.current!.send(
+          JSON.stringify({ type: "req", id, method, params: params || {} }),
+        );
+      });
+    },
+    [connect],
+  );
+
+  // ---- sendChat ----
+
+  const sendChat = useCallback(
+    (agentName: string, message: string) => {
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(
+          JSON.stringify({
+            type: "agent_chat",
+            agent_name: agentName,
+            message,
+          }),
+        );
+      }
+    },
+    [],
+  );
+
+  // ---- Subscription helpers ----
+
+  const onEvent = useCallback(
+    (handler: (event: string, data: unknown) => void) => {
+      eventHandlersRef.current.add(handler);
+      return () => {
+        eventHandlersRef.current.delete(handler);
+      };
+    },
+    [],
+  );
+
+  const onChatMessage = useCallback(
+    (handler: (msg: ChatIncomingMessage) => void) => {
+      chatHandlersRef.current.add(handler);
+      return () => {
+        chatHandlersRef.current.delete(handler);
+      };
+    },
+    [],
+  );
+
+  return (
+    <GatewayContext.Provider
+      value={{ isConnected, error, sendReq, sendChat, onEvent, onChatMessage }}
+    >
+      {children}
+    </GatewayContext.Provider>
+  );
+}
+
+// =============================================================================
+// Hook
+// =============================================================================
+
+export function useGateway(): GatewayContextValue {
+  const ctx = useContext(GatewayContext);
+  if (!ctx) {
+    throw new Error("useGateway must be used within a GatewayProvider");
+  }
+  return ctx;
+}
