@@ -41,6 +41,11 @@ interface InternalMessage {
 
 // =============================================================================
 // Hook
+//
+// NOTE: Only one useAgentChat instance should be active at a time. The backend
+// protocol does not tag chunk/done/error messages with an agent_name, so
+// concurrent instances would receive each other's messages. The UI enforces
+// this by rendering a single AgentChatWindow.
 // =============================================================================
 
 export function useAgentChat(agentName: string | null): UseAgentChatReturn {
@@ -56,6 +61,8 @@ export function useAgentChat(agentName: string | null): UseAgentChatReturn {
   agentNameRef.current = agentName;
 
   // ---- Chat message handler ----
+  // Dependencies are intentionally minimal ([onChatMessage]) because all
+  // mutable values are accessed through refs, avoiding stale closures.
 
   useEffect(() => {
     return onChatMessage((msg: ChatIncomingMessage) => {
@@ -121,10 +128,15 @@ export function useAgentChat(agentName: string | null): UseAgentChatReturn {
         throw new Error("No agent selected");
       }
 
+      if (!isConnected) {
+        setError("Not connected. Please wait and try again.");
+        return;
+      }
+
       setError(null);
 
-      const userMsgId = `user-${Date.now()}`;
-      const assistantMsgId = `assistant-${Date.now()}`;
+      const userMsgId = `user-${crypto.randomUUID()}`;
+      const assistantMsgId = `assistant-${crypto.randomUUID()}`;
 
       currentAssistantIdRef.current = assistantMsgId;
       streamContentRef.current = "";
@@ -154,7 +166,7 @@ export function useAgentChat(agentName: string | null): UseAgentChatReturn {
         streamContentRef.current = "";
       }
     },
-    [sendChat],
+    [sendChat, isConnected],
   );
 
   // ---- Clear messages ----
