@@ -30,7 +30,11 @@ export function useGatewayRpc<T = unknown>(
 
   const fetcher = useCallback(
     async (key: string) => {
-      const [, m, paramStr] = key.split("|");
+      // Split on first two "|" only — params JSON may contain pipe characters
+      const firstPipe = key.indexOf("|");
+      const secondPipe = key.indexOf("|", firstPipe + 1);
+      const m = key.slice(firstPipe + 1, secondPipe);
+      const paramStr = key.slice(secondPipe + 1);
       const parsedParams = paramStr ? JSON.parse(paramStr) : undefined;
       try {
         return (await sendReq(m, parsedParams)) as T;
