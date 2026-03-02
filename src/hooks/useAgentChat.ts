@@ -224,21 +224,6 @@ export function useAgentChat(agentId: string | null): UseAgentChatReturn {
     streamContentRef.current = "";
   }, []);
 
-  // ---- Clear on agent change ----
-
-  const prevAgentIdRef = useRef<string | null | undefined>(undefined);
-
-  useEffect(() => {
-    if (prevAgentIdRef.current === undefined) {
-      prevAgentIdRef.current = agentId;
-      return;
-    }
-    if (prevAgentIdRef.current !== agentId) {
-      clearMessages();
-      prevAgentIdRef.current = agentId;
-    }
-  }, [agentId, clearMessages]);
-
   // ---- External interface ----
 
   const externalMessages: AgentMessage[] = messages.map(({ role, content, toolUses }) => ({

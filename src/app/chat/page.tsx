@@ -33,7 +33,7 @@ export default function ChatPage() {
         onPanelChange={setActivePanel}
       >
         {activeView === "chat" ? (
-          <AgentChatWindow agentId={selectedAgentId} />
+          <AgentChatWindow key={selectedAgentId} agentId={selectedAgentId} />
         ) : (
           <ControlPanelRouter panel={activePanel} />
         )}

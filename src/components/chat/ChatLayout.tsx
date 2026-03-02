@@ -42,9 +42,11 @@ export function ChatLayout({
   const { isSignedIn } = useAuth();
   const api = useApi();
   const { agents, defaultId, createAgent, deleteAgent } = useAgents();
-  const [currentAgentId, setCurrentAgentId] = useState<string | null>(null);
+  const [userSelectedId, setUserSelectedId] = useState<string | null>(null);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
-  const hasAutoSelected = useRef(false);
+
+  // Derive effective agent: user selection > default > first agent
+  const currentAgentId = userSelectedId ?? defaultId ?? agents[0]?.id ?? null;
 
   useEffect(() => {
     if (!isSignedIn) return;
@@ -52,19 +54,17 @@ export function ChatLayout({
     api.syncUser().catch((err) => console.error("User sync failed:", err));
   }, [isSignedIn, api]);
 
-  // Set default agent on first load — dispatch event so page.tsx picks it up
+  // Dispatch DOM event so page.tsx picks up the current agent (external system sync)
+  const lastDispatchedRef = useRef<string | null>(null);
   useEffect(() => {
-    if (hasAutoSelected.current) return;
-    const picked = defaultId ?? agents[0]?.id;
-    if (picked) {
-      hasAutoSelected.current = true;
-      dispatchSelectAgentEvent(picked);
-      setCurrentAgentId(picked);
+    if (currentAgentId && currentAgentId !== lastDispatchedRef.current) {
+      lastDispatchedRef.current = currentAgentId;
+      dispatchSelectAgentEvent(currentAgentId);
     }
-  }, [defaultId, agents]);
+  }, [currentAgentId]);
 
   function handleSelectAgent(agentId: string): void {
-    setCurrentAgentId(agentId);
+    setUserSelectedId(agentId);
     dispatchSelectAgentEvent(agentId);
   }
 
@@ -79,7 +79,7 @@ export function ChatLayout({
       if (remaining.length > 0) {
         handleSelectAgent(remaining[0].id);
       } else {
-        setCurrentAgentId(null);
+        setUserSelectedId(null);
       }
     }
   }
