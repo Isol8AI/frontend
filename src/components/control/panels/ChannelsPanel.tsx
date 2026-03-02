@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback } from "react";
 import {
   Loader2,
   RefreshCw,
@@ -742,18 +742,18 @@ function ChannelConfigForm({
   busy: boolean;
   onSave: (values: Record<string, string>) => void;
 }) {
-  // Initialize form values from current config
-  const initialValues = useRef<Record<string, string>>({});
-  if (Object.keys(initialValues.current).length === 0) {
+  // Build initial values from current config (computed once via lazy initializer)
+  const [initialSnapshot] = useState(() => {
+    const init: Record<string, string> = {};
     for (const field of fields) {
       const val = currentConfig[field.key];
-      initialValues.current[field.key] =
-        typeof val === "string" ? val : val ? String(val) : "";
+      init[field.key] = typeof val === "string" ? val : val ? String(val) : "";
     }
-  }
+    return init;
+  });
 
   const [values, setValues] = useState<Record<string, string>>(
-    () => ({ ...initialValues.current }),
+    () => ({ ...initialSnapshot }),
   );
   const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
   const [saved, setSaved] = useState(false);
@@ -770,7 +770,7 @@ function ChannelConfigForm({
 
   const hasChanges = fields.some((f) => {
     const current = values[f.key] ?? "";
-    const original = initialValues.current[f.key] ?? "";
+    const original = initialSnapshot[f.key] ?? "";
     return current !== original && current !== REDACTED_SENTINEL;
   });
 
