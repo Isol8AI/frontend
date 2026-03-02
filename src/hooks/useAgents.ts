@@ -1,105 +1,46 @@
 "use client";
 
 import { useCallback } from "react";
-import useSWR from "swr";
-import { useAuth } from "@clerk/nextjs";
-import { BACKEND_URL } from "@/lib/api";
+import { useGatewayRpc, useGatewayRpcMutation } from "@/hooks/useGatewayRpc";
 
-interface Agent {
-  agent_name: string;
-  user_id: string;
-  created_at: string;
-  updated_at: string;
-  soul_content?: string;
+export interface Agent {
+  id: string;
+  name?: string;
+  identity?: { name?: string; emoji?: string; avatar?: string };
 }
 
-interface AgentsResponse {
-  agents: Agent[];
+interface AgentsListResponse {
+  defaultId?: string;
+  agents?: Agent[];
 }
 
 export function useAgents() {
-  const { getToken } = useAuth();
+  const { data, error, isLoading, mutate } =
+    useGatewayRpc<AgentsListResponse>("agents.list");
+  const callRpc = useGatewayRpcMutation();
 
-  const fetcher = useCallback(async (url: string) => {
-    const token = await getToken();
-    if (!token) throw new Error("No auth token");
+  const agents = data?.agents ?? [];
+  const defaultId = data?.defaultId;
 
-    const res = await fetch(`${BACKEND_URL}${url}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!res.ok) throw new Error("Failed to fetch agents");
-    return res.json();
-  }, [getToken]);
-
-  const { data, error, isLoading, mutate } = useSWR<AgentsResponse>(
-    "/agents",
-    fetcher,
-    {
-      revalidateOnFocus: false,
-      revalidateOnMount: true,
-      dedupingInterval: 10000,
-    }
+  const createAgent = useCallback(
+    async (name: string) => {
+      await callRpc("agents.create", { name });
+      mutate();
+    },
+    [callRpc, mutate],
   );
 
-  const createAgent = useCallback(async (
-    name: string,
-    soulContent?: string,
-  ) => {
-    const token = await getToken();
-    if (!token) throw new Error("No auth token");
-
-    const body: { agent_name: string; soul_content?: string } = {
-      agent_name: name,
-    };
-    if (soulContent !== undefined) body.soul_content = soulContent;
-
-    const res = await fetch(`${BACKEND_URL}/agents`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(body),
-    });
-
-    if (!res.ok) throw new Error("Failed to create agent");
-
-    const created = await res.json();
-
-    mutate(
-      (current) => current ? {
-        ...current,
-        agents: [...current.agents, created],
-      } : current,
-      { revalidate: true }
-    );
-
-    return created;
-  }, [getToken, mutate]);
-
-  const deleteAgent = useCallback(async (agentName: string) => {
-    const token = await getToken();
-    if (!token) throw new Error("No auth token");
-
-    const res = await fetch(`${BACKEND_URL}/agents/${agentName}`, {
-      method: "DELETE",
-      headers: { Authorization: `Bearer ${token}` },
-    });
-
-    if (!res.ok) throw new Error("Failed to delete agent");
-
-    // Optimistically remove from local cache
-    mutate(
-      (current) => current ? {
-        ...current,
-        agents: current.agents.filter(a => a.agent_name !== agentName),
-      } : current,
-      { revalidate: false }
-    );
-  }, [getToken, mutate]);
+  const deleteAgent = useCallback(
+    async (agentId: string) => {
+      await callRpc("agents.delete", { agentId, deleteFiles: true });
+      mutate();
+    },
+    [callRpc, mutate],
+  );
 
   return {
-    agents: data?.agents ?? [],
+    agents,
+    defaultId,
     isLoading,
     error,
     refresh: () => mutate(),

@@ -3,7 +3,7 @@
  * Agent chat hook that uses the shared GatewayProvider WebSocket.
  *
  * Message protocol (unchanged):
- * - Send: { type: "agent_chat", agent_name: string, message: string }
+ * - Send: { type: "agent_chat", agent_id: string, message: string }
  * - Receive: { type: "chunk", content: string }
  * - Receive: { type: "done" }
  * - Receive: { type: "error", message: string }
@@ -50,12 +50,12 @@ interface InternalMessage {
 // Hook
 //
 // NOTE: Only one useAgentChat instance should be active at a time. The backend
-// protocol does not tag chunk/done/error messages with an agent_name, so
+// protocol does not tag chunk/done/error messages with an agent_id, so
 // concurrent instances would receive each other's messages. The UI enforces
 // this by rendering a single AgentChatWindow.
 // =============================================================================
 
-export function useAgentChat(agentName: string | null): UseAgentChatReturn {
+export function useAgentChat(agentId: string | null): UseAgentChatReturn {
   const { isConnected, sendChat, onChatMessage } = useGateway();
 
   const [messages, setMessages] = useState<InternalMessage[]>([]);
@@ -64,8 +64,8 @@ export function useAgentChat(agentName: string | null): UseAgentChatReturn {
 
   const currentAssistantIdRef = useRef<string | null>(null);
   const streamContentRef = useRef<string>("");
-  const agentNameRef = useRef(agentName);
-  agentNameRef.current = agentName;
+  const agentIdRef = useRef(agentId);
+  agentIdRef.current = agentId;
 
   // ---- Chat message handler ----
   // Dependencies are intentionally minimal ([onChatMessage]) because all
@@ -167,7 +167,7 @@ export function useAgentChat(agentName: string | null): UseAgentChatReturn {
 
   const sendMessage = useCallback(
     async (message: string): Promise<void> => {
-      if (!agentNameRef.current) {
+      if (!agentIdRef.current) {
         throw new Error("No agent selected");
       }
 
@@ -192,7 +192,7 @@ export function useAgentChat(agentName: string | null): UseAgentChatReturn {
       setIsStreaming(true);
 
       try {
-        sendChat(agentNameRef.current, message);
+        sendChat(agentIdRef.current, message);
       } catch (err) {
         const errorMessage =
           err instanceof Error ? err.message : "Failed to send message";
@@ -224,18 +224,18 @@ export function useAgentChat(agentName: string | null): UseAgentChatReturn {
 
   // ---- Clear on agent change ----
 
-  const prevAgentNameRef = useRef<string | null | undefined>(undefined);
+  const prevAgentIdRef = useRef<string | null | undefined>(undefined);
 
   useEffect(() => {
-    if (prevAgentNameRef.current === undefined) {
-      prevAgentNameRef.current = agentName;
+    if (prevAgentIdRef.current === undefined) {
+      prevAgentIdRef.current = agentId;
       return;
     }
-    if (prevAgentNameRef.current !== agentName) {
+    if (prevAgentIdRef.current !== agentId) {
       clearMessages();
-      prevAgentNameRef.current = agentName;
+      prevAgentIdRef.current = agentId;
     }
-  }, [agentName, clearMessages]);
+  }, [agentId, clearMessages]);
 
   // ---- External interface ----
 

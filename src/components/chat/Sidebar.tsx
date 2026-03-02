@@ -11,7 +11,7 @@ interface Session {
 }
 
 interface Agent {
-  agent_name: string;
+  agent_id: string;
   created_at: string;
 }
 
@@ -28,7 +28,7 @@ interface SidebarProps extends React.HTMLAttributes<HTMLDivElement> {
   activeTab?: SidebarTab;
   onTabChange?: (tab: SidebarTab) => void;
   agents?: Agent[];
-  currentAgentName?: string | null;
+  currentAgentId?: string | null;
   isLoadingAgents?: boolean;
   onNewAgent?: () => void;
   onSelectAgent?: (name: string) => void;
@@ -47,7 +47,7 @@ export function Sidebar({
   activeTab = 'chats',
   onTabChange,
   agents = [],
-  currentAgentName,
+  currentAgentId,
   isLoadingAgents = false,
   onNewAgent,
   onSelectAgent,
@@ -163,26 +163,26 @@ export function Sidebar({
               </p>
             ) : (
               agents.map((agent) => (
-                <div key={agent.agent_name} className="group relative">
+                <div key={agent.agent_id} className="group relative">
                   <Button
                     variant="ghost"
                     className={cn(
                       "w-full justify-start gap-2 font-normal truncate transition-all pr-16",
-                      currentAgentName === agent.agent_name
+                      currentAgentId === agent.agent_id
                         ? "bg-accent text-accent-foreground"
                         : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
                     )}
-                    onClick={() => onSelectAgent?.(agent.agent_name)}
+                    onClick={() => onSelectAgent?.(agent.agent_id)}
                   >
                     <Bot className="h-4 w-4 flex-shrink-0 opacity-70" />
-                    <span className="truncate">{agent.agent_name}</span>
+                    <span className="truncate">{agent.agent_id}</span>
                   </Button>
                   <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button
                       className="p-1 rounded hover:bg-accent"
                       onClick={(e) => {
                         e.stopPropagation();
-                        onOpenAgentSettings?.(agent.agent_name);
+                        onOpenAgentSettings?.(agent.agent_id);
                       }}
                     >
                       <Settings className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground transition-colors" />
@@ -191,7 +191,7 @@ export function Sidebar({
                       className="p-1 rounded hover:bg-accent"
                       onClick={(e) => {
                         e.stopPropagation();
-                        onDeleteAgent?.(agent.agent_name);
+                        onDeleteAgent?.(agent.agent_id);
                       }}
                     >
                       <Trash2 className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive transition-colors" />

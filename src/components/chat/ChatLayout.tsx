@@ -2,11 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { useAuth, UserButton } from "@clerk/nextjs";
-import { Plus, Bot } from "lucide-react";
+import { Plus, Bot, Trash2 } from "lucide-react";
 
 import { SubscriptionGate } from "@/components/chat/SubscriptionGate";
 import { ContainerGate } from "@/components/chat/ContainerGate";
+import { AgentCreateDialog } from "@/components/chat/AgentCreateDialog";
 import { useApi } from "@/lib/api";
+import { useAgents, type Agent } from "@/hooks/useAgents";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ControlSidebar } from "@/components/control/ControlSidebar";
@@ -20,10 +22,14 @@ interface ChatLayoutProps {
   onPanelChange?: (panel: string) => void;
 }
 
-function dispatchSelectAgentEvent(agentName: string): void {
+function dispatchSelectAgentEvent(agentId: string): void {
   window.dispatchEvent(
-    new CustomEvent("selectAgent", { detail: { agentName } }),
+    new CustomEvent("selectAgent", { detail: { agentId } }),
   );
+}
+
+function agentDisplayName(agent: Agent): string {
+  return agent.identity?.name || agent.name || agent.id;
 }
 
 export function ChatLayout({
@@ -35,7 +41,9 @@ export function ChatLayout({
 }: ChatLayoutProps): React.ReactElement {
   const { isSignedIn } = useAuth();
   const api = useApi();
-  const [currentAgentName, setCurrentAgentName] = useState<string>("main");
+  const { agents, defaultId, createAgent, deleteAgent } = useAgents();
+  const [currentAgentId, setCurrentAgentId] = useState<string | null>(null);
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
 
   useEffect(() => {
     if (!isSignedIn) return;
@@ -43,13 +51,38 @@ export function ChatLayout({
     api.syncUser().catch((err) => console.error("User sync failed:", err));
   }, [isSignedIn, api]);
 
-  function handleSelectAgent(agentName: string): void {
-    setCurrentAgentName(agentName);
-    dispatchSelectAgentEvent(agentName);
+  // Set default agent on first load
+  useEffect(() => {
+    if (currentAgentId) return;
+    if (defaultId) {
+      setCurrentAgentId(defaultId);
+      dispatchSelectAgentEvent(defaultId);
+    } else if (agents.length > 0) {
+      setCurrentAgentId(agents[0].id);
+      dispatchSelectAgentEvent(agents[0].id);
+    }
+  }, [currentAgentId, defaultId, agents]);
+
+  function handleSelectAgent(agentId: string): void {
+    setCurrentAgentId(agentId);
+    dispatchSelectAgentEvent(agentId);
   }
 
-  // TODO: fetch agent list from OpenClaw via backend proxy
-  const agents = [{ name: "main", label: "OpenClaw" }];
+  async function handleCreateAgent(name: string): Promise<void> {
+    await createAgent(name);
+  }
+
+  async function handleDeleteAgent(agentId: string): Promise<void> {
+    await deleteAgent(agentId);
+    if (currentAgentId === agentId) {
+      const remaining = agents.filter((a) => a.id !== agentId);
+      if (remaining.length > 0) {
+        handleSelectAgent(remaining[0].id);
+      } else {
+        setCurrentAgentId(null);
+      }
+    }
+  }
 
   return (
     <div className="flex h-screen bg-background text-foreground overflow-hidden relative selection:bg-primary/20">
@@ -90,8 +123,7 @@ export function ChatLayout({
               <div className="px-3 py-2">
                 <Button
                   className="w-full justify-start gap-2 bg-primary text-primary-foreground hover:bg-primary/90 font-medium transition-all shadow-lg shadow-primary/5"
-                  disabled
-                  title="Coming soon — create additional OpenClaw agents"
+                  onClick={() => setCreateDialogOpen(true)}
                 >
                   <Plus className="h-4 w-4" />
                   New Agent
@@ -102,23 +134,38 @@ export function ChatLayout({
               <ScrollArea className="flex-1 px-3 py-2">
                 <div className="space-y-1">
                   {agents.map((agent) => (
-                    <Button
-                      key={agent.name}
-                      variant="ghost"
-                      className={cn(
-                        "w-full justify-start gap-2 font-normal truncate transition-all",
-                        currentAgentName === agent.name
-                          ? "bg-accent text-accent-foreground"
-                          : "text-muted-foreground hover:text-foreground hover:bg-accent/50",
-                      )}
-                      onClick={() => handleSelectAgent(agent.name)}
-                    >
-                      <Bot className="h-4 w-4 flex-shrink-0 opacity-70" />
-                      <span className="truncate">{agent.label}</span>
-                    </Button>
+                    <div key={agent.id} className="group flex items-center">
+                      <Button
+                        variant="ghost"
+                        className={cn(
+                          "flex-1 justify-start gap-2 font-normal truncate transition-all",
+                          currentAgentId === agent.id
+                            ? "bg-accent text-accent-foreground"
+                            : "text-muted-foreground hover:text-foreground hover:bg-accent/50",
+                        )}
+                        onClick={() => handleSelectAgent(agent.id)}
+                      >
+                        <Bot className="h-4 w-4 flex-shrink-0 opacity-70" />
+                        <span className="truncate">{agentDisplayName(agent)}</span>
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-opacity"
+                        onClick={() => handleDeleteAgent(agent.id)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
                   ))}
                 </div>
               </ScrollArea>
+
+              <AgentCreateDialog
+                open={createDialogOpen}
+                onOpenChange={setCreateDialogOpen}
+                onCreateAgent={handleCreateAgent}
+              />
             </>
           ) : (
             <ControlSidebar activePanel={activePanel} onPanelChange={onPanelChange} />

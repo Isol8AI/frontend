@@ -16,12 +16,11 @@ import { Input } from "@/components/ui/input";
 
 const AGENT_NAME_REGEX = /^[a-zA-Z0-9_-]+$/;
 const AGENT_NAME_MAX = 50;
-const SOUL_CONTENT_MAX = 10000;
 
 interface AgentCreateDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onCreateAgent: (name: string, soulContent?: string) => Promise<void>;
+  onCreateAgent: (name: string) => Promise<void>;
 }
 
 export function AgentCreateDialog({
@@ -30,14 +29,12 @@ export function AgentCreateDialog({
   onCreateAgent,
 }: AgentCreateDialogProps) {
   const [name, setName] = useState("");
-  const [soulContent, setSoulContent] = useState("");
   const [nameError, setNameError] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
 
   const handleOpenChange = useCallback((isOpen: boolean) => {
     if (!isOpen) {
       setName("");
-      setSoulContent("");
       setNameError(null);
       setIsCreating(false);
     }
@@ -71,12 +68,6 @@ export function AgentCreateDialog({
     }
   };
 
-  const handleSoulContentChange = (
-    e: React.ChangeEvent<HTMLTextAreaElement>
-  ) => {
-    setSoulContent(e.target.value.slice(0, SOUL_CONTENT_MAX));
-  };
-
   const handleCreate = async (e: React.MouseEvent) => {
     e.preventDefault();
 
@@ -88,13 +79,9 @@ export function AgentCreateDialog({
 
     setIsCreating(true);
     try {
-      await onCreateAgent(
-        name.trim(),
-        soulContent.trim() || undefined,
-      );
+      await onCreateAgent(name.trim());
       handleOpenChange(false);
     } catch {
-      // Parent handles error display; keep dialog open so user can retry
       setIsCreating(false);
     }
   };
@@ -108,13 +95,12 @@ export function AgentCreateDialog({
         <AlertDialogHeader>
           <AlertDialogTitle>Create a New Agent</AlertDialogTitle>
           <AlertDialogDescription>
-            Give your agent a name and an optional personality. The personality
-            defines how the agent behaves and responds.
+            Give your agent a name. You can customize its personality later
+            via SOUL.md in the control panel.
           </AlertDialogDescription>
         </AlertDialogHeader>
 
         <div className="space-y-4 py-2">
-          {/* Agent Name */}
           <div>
             <label
               htmlFor="agent-name"
@@ -147,32 +133,6 @@ export function AgentCreateDialog({
               Letters, numbers, underscores, and hyphens only.
             </p>
           </div>
-
-          {/* Soul / Personality */}
-          <div>
-            <label
-              htmlFor="agent-soul"
-              className="text-sm font-medium text-white mb-1.5 block"
-            >
-              Personality{" "}
-              <span className="text-white/40 font-normal">(optional)</span>
-            </label>
-            <textarea
-              id="agent-soul"
-              rows={5}
-              placeholder="You are a helpful assistant who specialises in..."
-              value={soulContent}
-              onChange={handleSoulContentChange}
-              disabled={isCreating}
-              maxLength={SOUL_CONTENT_MAX}
-              className="flex w-full rounded-md border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-white/30 focus:outline-none focus:ring-1 focus:ring-white/20 disabled:cursor-not-allowed disabled:opacity-50 resize-y min-h-[100px] max-h-[240px]"
-              data-testid="agent-soul-input"
-            />
-            <p className="text-xs text-white/40 mt-1.5 text-right">
-              {soulContent.length}/{SOUL_CONTENT_MAX}
-            </p>
-          </div>
-
         </div>
 
         <AlertDialogFooter>

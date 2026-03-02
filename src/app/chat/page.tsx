@@ -7,14 +7,14 @@ import { ControlPanelRouter } from "@/components/control/ControlPanelRouter";
 import { GatewayProvider } from "@/hooks/useGateway";
 
 export default function ChatPage() {
-  const [selectedAgent, setSelectedAgent] = useState<string>("main");
+  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [activeView, setActiveView] = useState<"chat" | "control">("chat");
   const [activePanel, setActivePanel] = useState<string>("overview");
 
   useEffect(() => {
     function handleSelectAgent(e: Event) {
-      const customEvent = e as CustomEvent<{ agentName: string }>;
-      setSelectedAgent(customEvent.detail.agentName);
+      const customEvent = e as CustomEvent<{ agentId: string }>;
+      setSelectedAgentId(customEvent.detail.agentId);
     }
 
     window.addEventListener("selectAgent", handleSelectAgent);
@@ -33,7 +33,7 @@ export default function ChatPage() {
         onPanelChange={setActivePanel}
       >
         {activeView === "chat" ? (
-          <AgentChatWindow agentName={selectedAgent} />
+          <AgentChatWindow agentId={selectedAgentId} />
         ) : (
           <ControlPanelRouter panel={activePanel} />
         )}

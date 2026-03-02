@@ -18,11 +18,11 @@ interface Message {
 }
 
 interface AgentChatWindowProps {
-  agentName: string;
+  agentId: string | null;
 }
 
 export function AgentChatWindow({
-  agentName,
+  agentId,
 }: AgentChatWindowProps): React.ReactElement {
   const {
     messages: chatMessages,
@@ -31,22 +31,22 @@ export function AgentChatWindow({
     sendMessage,
     clearMessages,
     isConnected,
-  } = useAgentChat(agentName);
+  } = useAgentChat(agentId);
 
   const isInitialState = chatMessages.length === 0;
   const isTyping = isStreaming;
 
-  const prevAgentNameRef = useRef<string | null | undefined>(undefined);
+  const prevAgentIdRef = useRef<string | null | undefined>(undefined);
 
   useEffect(() => {
     if (
-      prevAgentNameRef.current !== undefined &&
-      prevAgentNameRef.current !== agentName
+      prevAgentIdRef.current !== undefined &&
+      prevAgentIdRef.current !== agentId
     ) {
       clearMessages();
     }
-    prevAgentNameRef.current = agentName;
-  }, [agentName, clearMessages]);
+    prevAgentIdRef.current = agentId;
+  }, [agentId, clearMessages]);
 
   const handleSend = useCallback(
     async (content: string): Promise<void> => {
@@ -106,14 +106,14 @@ export function AgentChatWindow({
         <div className="flex-1 flex flex-col items-center justify-center p-4">
           <div className="text-center mb-8">
             <h1 className="text-4xl font-bold mb-3 text-foreground tracking-tight font-host">
-              {agentName}
+              {agentId ?? "Select an agent"}
             </h1>
             <p className="text-muted-foreground text-lg font-light">
               Start a conversation with your agent
             </p>
           </div>
           <div className="w-full max-w-2xl">
-            <ChatInput onSend={handleSend} disabled={isTyping} centered />
+            <ChatInput onSend={handleSend} disabled={isTyping || !agentId} centered />
           </div>
         </div>
       </div>

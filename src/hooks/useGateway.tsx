@@ -66,7 +66,7 @@ interface GatewayContextValue {
   isConnected: boolean;
   error: string | null;
   sendReq: (method: string, params?: Record<string, unknown>) => Promise<unknown>;
-  sendChat: (agentName: string, message: string) => void;
+  sendChat: (agentId: string, message: string) => void;
   onEvent: (handler: (event: string, data: unknown) => void) => () => void;
   onChatMessage: (handler: (msg: ChatIncomingMessage) => void) => () => void;
 }
@@ -308,12 +308,12 @@ export function GatewayProvider({ children }: { children: ReactNode }) {
   // ---- sendChat ----
 
   const sendChat = useCallback(
-    (agentName: string, message: string) => {
+    (agentId: string, message: string) => {
       if (wsRef.current?.readyState === WebSocket.OPEN) {
         wsRef.current.send(
           JSON.stringify({
             type: "agent_chat",
-            agent_name: agentName,
+            agent_id: agentId,
             message,
           }),
         );
