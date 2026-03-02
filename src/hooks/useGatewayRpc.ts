@@ -1,7 +1,7 @@
 // frontend/src/hooks/useGatewayRpc.ts
 "use client";
 
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import useSWR, { SWRConfiguration } from "swr";
 import { useGateway } from "@/hooks/useGateway";
 
@@ -63,11 +63,17 @@ export function useGatewayRpc<T = unknown>(
     },
   );
 
-  // Auto-revalidate when gateway pushes a matching event
+  // Auto-revalidate when gateway pushes a matching event (throttled to
+  // respect dedupingInterval — without this, high-frequency OpenClaw events
+  // bypass SWR deduping and flood the backend with RPCs).
+  const lastRevalidateRef = useRef(0);
   useEffect(() => {
     if (!method) return;
     return onEvent((event) => {
       if (method === event || method.startsWith(event + ".")) {
+        const now = Date.now();
+        if (now - lastRevalidateRef.current < 10_000) return;
+        lastRevalidateRef.current = now;
         mutate();
       }
     });
