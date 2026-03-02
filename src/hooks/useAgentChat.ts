@@ -79,7 +79,10 @@ export function useAgentChat(agentId: string | null): UseAgentChatReturn {
       if (!currentAssistantIdRef.current) return;
 
       if (msg.type === "chunk") {
-        streamContentRef.current += msg.content;
+        // OpenClaw sends cumulative text (full response so far) in each
+        // chunk, so we replace rather than append — matching how OpenClaw's
+        // own frontend handles streaming.
+        streamContentRef.current = msg.content;
         const updatedContent = streamContentRef.current;
         setMessages((prev) =>
           prev.map((m) =>
