@@ -249,8 +249,36 @@ export function ChannelsPanel() {
 
   // Parse response — handle both snapshot object and possible null
   const snapshot = data as ChannelsStatusSnapshot | null | undefined;
-  const channelOrder = snapshot?.channelOrder ?? [];
-  const channelLabels = snapshot?.channelLabels ?? {};
+  // Fallback to default channel list when gateway returns empty channelOrder
+  // (matches OpenClaw UI behavior in resolveChannelOrder)
+  const DEFAULT_CHANNELS = [
+    "whatsapp",
+    "telegram",
+    "discord",
+    "googlechat",
+    "slack",
+    "signal",
+    "imessage",
+    "nostr",
+  ];
+  const DEFAULT_LABELS: Record<string, string> = {
+    whatsapp: "WhatsApp",
+    telegram: "Telegram",
+    discord: "Discord",
+    googlechat: "Google Chat",
+    slack: "Slack",
+    signal: "Signal",
+    imessage: "iMessage",
+    nostr: "Nostr",
+  };
+  const channelOrder =
+    snapshot?.channelOrder?.length
+      ? snapshot.channelOrder
+      : DEFAULT_CHANNELS;
+  const channelLabels = {
+    ...DEFAULT_LABELS,
+    ...(snapshot?.channelLabels ?? {}),
+  };
   const channelAccounts = snapshot?.channelAccounts ?? {};
   const channelDetailLabels = snapshot?.channelDetailLabels ?? {};
 
@@ -297,11 +325,6 @@ export function ChannelsPanel() {
       )}
 
       {/* Channel cards */}
-      {channelOrder.length === 0 && !isLoading && (
-        <p className="text-sm text-muted-foreground">
-          No channels configured. Check your gateway configuration.
-        </p>
-      )}
 
       <div className="space-y-4">
         {channelOrder.map((channelId) => {
@@ -330,6 +353,23 @@ export function ChannelsPanel() {
           );
         })}
       </div>
+
+      {/* Raw snapshot for debugging */}
+      {snapshot && (
+        <details className="text-xs">
+          <summary className="text-muted-foreground cursor-pointer hover:text-foreground">
+            Raw gateway response
+          </summary>
+          <pre className="mt-2 p-3 rounded-md bg-muted/30 border border-border/40 overflow-auto max-h-60 text-[10px] leading-tight">
+            {JSON.stringify(snapshot, null, 2)}
+          </pre>
+        </details>
+      )}
+      {!snapshot && !isLoading && !error && (
+        <p className="text-xs text-muted-foreground">
+          No response from gateway. WebSocket may not be connected.
+        </p>
+      )}
     </div>
   );
 }
