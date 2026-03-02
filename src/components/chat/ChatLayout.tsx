@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAuth, UserButton } from "@clerk/nextjs";
 import { Plus, Bot, Trash2 } from "lucide-react";
 
@@ -44,6 +44,7 @@ export function ChatLayout({
   const { agents, defaultId, createAgent, deleteAgent } = useAgents();
   const [currentAgentId, setCurrentAgentId] = useState<string | null>(null);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const hasAutoSelected = useRef(false);
 
   useEffect(() => {
     if (!isSignedIn) return;
@@ -51,17 +52,16 @@ export function ChatLayout({
     api.syncUser().catch((err) => console.error("User sync failed:", err));
   }, [isSignedIn, api]);
 
-  // Set default agent on first load
+  // Set default agent on first load — dispatch event so page.tsx picks it up
   useEffect(() => {
-    if (currentAgentId) return;
-    if (defaultId) {
-      setCurrentAgentId(defaultId);
-      dispatchSelectAgentEvent(defaultId);
-    } else if (agents.length > 0) {
-      setCurrentAgentId(agents[0].id);
-      dispatchSelectAgentEvent(agents[0].id);
+    if (hasAutoSelected.current) return;
+    const picked = defaultId ?? agents[0]?.id;
+    if (picked) {
+      hasAutoSelected.current = true;
+      dispatchSelectAgentEvent(picked);
+      setCurrentAgentId(picked);
     }
-  }, [currentAgentId, defaultId, agents]);
+  }, [defaultId, agents]);
 
   function handleSelectAgent(agentId: string): void {
     setCurrentAgentId(agentId);

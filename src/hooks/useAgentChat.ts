@@ -65,7 +65,9 @@ export function useAgentChat(agentId: string | null): UseAgentChatReturn {
   const currentAssistantIdRef = useRef<string | null>(null);
   const streamContentRef = useRef<string>("");
   const agentIdRef = useRef(agentId);
-  agentIdRef.current = agentId;
+  useEffect(() => {
+    agentIdRef.current = agentId;
+  }, [agentId]);
 
   // ---- Chat message handler ----
   // Dependencies are intentionally minimal ([onChatMessage]) because all
