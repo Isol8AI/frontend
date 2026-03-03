@@ -32,9 +32,12 @@ export default function ChatPage() {
         activePanel={activePanel}
         onPanelChange={setActivePanel}
       >
-        {activeView === "chat" ? (
+        {/* Keep AgentChatWindow mounted but hidden so chat state
+            (messages, scroll position, streaming) survives view switches */}
+        <div className={activeView === "chat" ? "flex flex-col h-full min-h-0" : "hidden"}>
           <AgentChatWindow key={selectedAgentId} agentId={selectedAgentId} />
-        ) : (
+        </div>
+        {activeView === "control" && (
           <ControlPanelRouter panel={activePanel} />
         )}
       </ChatLayout>
