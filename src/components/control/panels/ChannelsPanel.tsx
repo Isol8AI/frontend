@@ -341,39 +341,32 @@ export function ChannelsPanel() {
   };
 
   const handleSaveConfig = useCallback(
-    async (channelId: string, values: Record<string, string>) => {
+    async (channelId: string, values: Record<string, string>): Promise<void> => {
       const snapshot = configData as ConfigSnapshot | undefined;
-      if (!snapshot?.config || !snapshot.hash) {
+      if (!snapshot?.hash) {
         setActionError("Config not loaded yet. Please wait and try again.");
-        return;
+        throw new Error("Config not loaded");
       }
       setActionBusy(`save-${channelId}`);
       setActionError(null);
       try {
-        // Deep-clone the full config and apply channel values (reference pattern:
-        // modify local config then config.set with the entire raw JSON).
-        const fullConfig = JSON.parse(JSON.stringify(snapshot.config)) as Record<string, unknown>;
-
-        // Ensure channels object exists
-        if (!fullConfig.channels || typeof fullConfig.channels !== "object") {
-          fullConfig.channels = {};
-        }
-        const channels = fullConfig.channels as Record<string, Record<string, unknown>>;
-        if (!channels[channelId] || typeof channels[channelId] !== "object") {
-          channels[channelId] = {};
-        }
-        const channelConf = channels[channelId];
-
+        // Build partial config with only the changed channel values.
+        // Using config.patch (not config.set) because config.get redacts
+        // sensitive values — sending a full config back would overwrite
+        // real tokens with __OPENCLAW_REDACTED__ sentinel strings.
+        const channelPatch: Record<string, string> = {};
         for (const [key, value] of Object.entries(values)) {
-          // Don't send redacted values back — they haven't changed
           if (value !== REDACTED_SENTINEL && value !== "") {
-            channelConf[key] = value;
+            channelPatch[key] = value;
           }
         }
 
-        // Send full config via config.set (same approach as OpenClaw reference UI)
-        await callRpc("config.set", {
-          raw: JSON.stringify(fullConfig, null, 2),
+        if (Object.keys(channelPatch).length === 0) {
+          return;
+        }
+
+        await callRpc("config.patch", {
+          raw: JSON.stringify({ channels: { [channelId]: channelPatch } }),
           baseHash: snapshot.hash,
         });
 
@@ -383,6 +376,7 @@ export function ChannelsPanel() {
         setTimeout(() => mutate(), 3000);
       } catch (err) {
         setActionError(err instanceof Error ? err.message : String(err));
+        throw err;
       } finally {
         setActionBusy(null);
       }
@@ -562,7 +556,7 @@ function ChannelCard({
   onRelink: () => void;
   onWaitForScan: () => void;
   onLogout: () => void;
-  onSaveConfig: (values: Record<string, string>) => void;
+  onSaveConfig: (values: Record<string, string>) => Promise<void>;
 }) {
   const busy = actionBusy !== null;
   const [showConfig, setShowConfig] = useState(false);
@@ -747,7 +741,7 @@ function ChannelConfigForm({
   fields: ChannelField[];
   currentConfig: Record<string, unknown>;
   busy: boolean;
-  onSave: (values: Record<string, string>) => void;
+  onSave: (values: Record<string, string>) => Promise<void>;
 }) {
   // Build initial values from current config (computed once via lazy initializer)
   const [initialSnapshot] = useState(() => {
@@ -770,9 +764,14 @@ function ChannelConfigForm({
     setSaved(false);
   };
 
-  const handleSave = () => {
-    onSave(values);
-    setSaved(true);
+  const handleSave = async () => {
+    try {
+      await onSave(values);
+      setSaved(true);
+    } catch {
+      // Error is displayed by parent via actionError
+      setSaved(false);
+    }
   };
 
   const hasChanges = fields.some((f) => {

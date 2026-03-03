@@ -272,50 +272,17 @@ function AgentOverviewTab({ agentId, agent, onAgentUpdated }: { agentId: string;
   // Effective model: per-agent overrides default
   const currentModel = agentModelPrimary || defaultModelPrimary || "";
 
-  // Save model via config.set with full config (matching OpenClaw reference).
-  // Modifies agents.list[].model for the specific agent, then sends the
-  // entire config as raw JSON — the proven approach from the reference UI.
+  // Save model via agents.update RPC (purpose-built for updating agent properties).
+  // We avoid config.set because config.get redacts sensitive values (channel tokens etc.)
+  // — sending redacted config back would corrupt the config file.
   const handleModelChange = useCallback(async (newModel: string) => {
-    if (!configSnapshot?.config || !configSnapshot.hash) {
-      setModelError("Config not loaded yet. Please wait and try again.");
-      return;
-    }
     setUpdatingModel(true);
     setModelError(null);
     try {
-      // Deep-clone the config object
-      const fullConfig = JSON.parse(JSON.stringify(configSnapshot.config));
-
-      // Ensure agents.list exists
-      if (!fullConfig.agents) fullConfig.agents = {};
-      if (!Array.isArray(fullConfig.agents.list)) fullConfig.agents.list = [];
-
-      // Find agent in list
-      const agentEntry = fullConfig.agents.list.find(
-        (a: AgentConfigEntry) => a?.id === agentId,
-      );
-
-      if (agentEntry) {
-        // Preserve existing fallbacks if model was an object
-        const existing = agentEntry.model;
-        if (existing && typeof existing === "object" && !Array.isArray(existing)) {
-          const fallbacks = (existing as { fallbacks?: string[] }).fallbacks;
-          agentEntry.model = {
-            primary: newModel,
-            ...(Array.isArray(fallbacks) ? { fallbacks } : {}),
-          };
-        } else {
-          agentEntry.model = newModel;
-        }
-      } else {
-        // Agent not in list — add it
-        fullConfig.agents.list.push({ id: agentId, model: newModel });
-      }
-
-      // Send full config via config.set (same approach as reference UI)
-      await callRpc("config.set", {
-        raw: JSON.stringify(fullConfig, null, 2),
-        baseHash: configSnapshot.hash,
+      // Empty string = clear per-agent override → inherit default
+      await callRpc("agents.update", {
+        agentId,
+        ...(newModel ? { model: newModel } : { model: null }),
       });
 
       // Refresh config and agent list after save
@@ -328,7 +295,7 @@ function AgentOverviewTab({ agentId, agent, onAgentUpdated }: { agentId: string;
     } finally {
       setUpdatingModel(false);
     }
-  }, [callRpc, agentId, configSnapshot, onAgentUpdated, mutateConfig]);
+  }, [callRpc, agentId, onAgentUpdated, mutateConfig]);
 
   // Build options list — catalog models + current model if not in catalog
   const modelOptions: { id: string; label: string }[] = Object.entries(modelsCatalog).map(
