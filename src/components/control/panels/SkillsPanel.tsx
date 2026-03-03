@@ -14,8 +14,9 @@ interface Skill {
   [key: string]: unknown;
 }
 
-export function SkillsPanel() {
-  const { data, error, isLoading, mutate } = useGatewayRpc<Skill[]>("skills.status");
+export function SkillsPanel({ agentId }: { agentId?: string }) {
+  const params = agentId ? { agentId } : {};
+  const { data, error, isLoading, mutate } = useGatewayRpc<Skill[]>("skills.status", params);
   const [filter, setFilter] = useState("");
 
   if (isLoading) {

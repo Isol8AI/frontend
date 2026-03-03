@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback, useRef, useMemo } from "react";
 import { Loader2, RefreshCw } from "lucide-react";
 import { useGatewayRpc } from "@/hooks/useGatewayRpc";
 import { Button } from "@/components/ui/button";
@@ -26,6 +26,8 @@ const LEVEL_BADGE_COLORS: Record<string, string> = {
   fatal: "bg-red-500/20 text-red-500",
 };
 
+const MAX_BUFFER = 2000;
+
 interface LogsResponse {
   file?: string;
   cursor?: number;
@@ -46,7 +48,14 @@ interface LogEntry {
   [key: string]: unknown;
 }
 
-function parseLogLine(line: unknown): { time: string; level: string; source: string; message: string } {
+interface ParsedLog {
+  time: string;
+  level: string;
+  source: string;
+  message: string;
+}
+
+function parseLogLine(line: unknown): ParsedLog {
   if (typeof line === "string") {
     try {
       const parsed = JSON.parse(line) as LogEntry;
@@ -61,7 +70,7 @@ function parseLogLine(line: unknown): { time: string; level: string; source: str
   return { time: "", level: "info", source: "", message: String(line) };
 }
 
-function extractLogFields(entry: LogEntry): { time: string; level: string; source: string; message: string } {
+function extractLogFields(entry: LogEntry): ParsedLog {
   const time = entry.time || entry.date || "";
   const timeStr = time ? new Date(time).toLocaleTimeString() : "";
 
@@ -85,13 +94,85 @@ function extractLogFields(entry: LogEntry): { time: string; level: string; sourc
 
 export function LogsPanel() {
   const [level, setLevel] = useState<string>("info");
-  const { data: rawData, error, isLoading, mutate } = useGatewayRpc<LogsResponse | unknown[]>(
-    "logs.tail",
-    { limit: 200 },
-    { refreshInterval: 5000 },
+  const [cursor, setCursor] = useState<number | undefined>(undefined);
+  const [logs, setLogs] = useState<ParsedLog[]>([]);
+  const [file, setFile] = useState<string | undefined>();
+  const [initialLoadDone, setInitialLoadDone] = useState(false);
+
+  // Track last processed SWR key to avoid re-processing same data
+  const lastProcessedKey = useRef<string>("");
+
+  const params = useMemo(
+    () =>
+      cursor != null
+        ? { cursor, limit: 200, maxBytes: 524288 }
+        : { limit: 200 },
+    [cursor],
   );
 
-  if (isLoading) {
+  // Use SWR's onSuccess to accumulate log lines without useEffect
+  const onSuccess = useCallback(
+    (incoming: LogsResponse | unknown[]) => {
+      // Deduplicate by checking a simple key
+      const key = JSON.stringify(incoming).slice(0, 200);
+      if (key === lastProcessedKey.current) return;
+      lastProcessedKey.current = key;
+
+      const response = incoming as LogsResponse;
+
+      // Check if we should reset
+      if (response.reset) {
+        setLogs([]);
+        setCursor(undefined);
+        setInitialLoadDone(false);
+        return;
+      }
+
+      // Extract lines
+      const rawLines: unknown[] = Array.isArray(incoming)
+        ? incoming
+        : response.lines ?? [];
+
+      if (rawLines.length === 0 && initialLoadDone) return;
+
+      // Update cursor for next poll
+      if (response.cursor != null) {
+        setCursor(response.cursor);
+      }
+
+      // Update file name
+      if (!Array.isArray(incoming) && response.file) {
+        setFile(response.file);
+      }
+
+      // Parse new lines
+      const newParsed = rawLines.map(parseLogLine);
+
+      if (!initialLoadDone) {
+        setLogs(newParsed.slice(-MAX_BUFFER));
+        setInitialLoadDone(true);
+      } else {
+        setLogs((prev) => [...prev, ...newParsed].slice(-MAX_BUFFER));
+      }
+    },
+    [initialLoadDone],
+  );
+
+  const { error, isLoading, mutate } = useGatewayRpc<LogsResponse | unknown[]>(
+    "logs.tail",
+    params,
+    { refreshInterval: 5000, onSuccess },
+  );
+
+  const handleReset = useCallback(() => {
+    setCursor(undefined);
+    setLogs([]);
+    setInitialLoadDone(false);
+    lastProcessedKey.current = "";
+    mutate();
+  }, [mutate]);
+
+  if (isLoading && !initialLoadDone) {
     return (
       <div className="flex-1 flex items-center justify-center">
         <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
@@ -99,7 +180,7 @@ export function LogsPanel() {
     );
   }
 
-  if (error) {
+  if (error && !initialLoadDone) {
     return (
       <div className="p-6 space-y-3">
         <p className="text-sm text-destructive">{error.message}</p>
@@ -110,15 +191,8 @@ export function LogsPanel() {
     );
   }
 
-  // Handle both { lines: [...] } and bare array
-  const rawLines: unknown[] = Array.isArray(rawData)
-    ? rawData
-    : (rawData as LogsResponse)?.lines ?? [];
-  const file = !Array.isArray(rawData) ? (rawData as LogsResponse)?.file : undefined;
-
   const levelIndex = LEVELS.indexOf(level as typeof LEVELS[number]);
-  const allParsed = rawLines.map(parseLogLine);
-  const logs = allParsed.filter((entry) => {
+  const filtered = logs.filter((entry) => {
     const entryIndex = LEVELS.indexOf(entry.level as typeof LEVELS[number]);
     return entryIndex >= levelIndex;
   });
@@ -132,9 +206,11 @@ export function LogsPanel() {
             {file ? `File: ${file}` : "Gateway file logs."}
           </p>
         </div>
-        <Button variant="ghost" size="sm" onClick={() => mutate()}>
-          <RefreshCw className="h-3.5 w-3.5" />
-        </Button>
+        <div className="flex gap-1">
+          <Button variant="ghost" size="sm" onClick={handleReset} title="Reset and re-fetch all logs">
+            <RefreshCw className="h-3.5 w-3.5" />
+          </Button>
+        </div>
       </div>
 
       <div className="flex gap-1 flex-wrap">
@@ -152,13 +228,15 @@ export function LogsPanel() {
             {l}
           </button>
         ))}
-        <span className="text-xs text-muted-foreground/40 self-center ml-2">{logs.length} entries</span>
+        <span className="text-xs text-muted-foreground/40 self-center ml-2">
+          {filtered.length} entries (buffer: {logs.length}/{MAX_BUFFER})
+        </span>
       </div>
 
       <div className="flex-1 min-h-0 bg-muted/20 rounded-lg border border-border overflow-auto">
         <div className="p-2 space-y-0.5 font-mono text-xs">
-          {logs.length > 0 ? (
-            logs.map((entry, i) => (
+          {filtered.length > 0 ? (
+            filtered.map((entry, i) => (
               <div key={i} className="flex gap-2 px-1 py-0.5 rounded hover:bg-muted/30">
                 {entry.time && (
                   <span className="text-muted-foreground/40 flex-shrink-0 w-20">{entry.time}</span>

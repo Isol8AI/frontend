@@ -261,7 +261,7 @@ function getChannelConfig(
 
 export function ChannelsPanel() {
   const { data, error, isLoading, mutate } =
-    useGatewayRpc<ChannelsStatusSnapshot>("channels.status");
+    useGatewayRpc<ChannelsStatusSnapshot>("channels.status", { probe: false, timeoutMs: 8000 });
   const {
     data: configData,
     mutate: mutateConfig,

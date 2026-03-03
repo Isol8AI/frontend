@@ -6,21 +6,29 @@ import { Button } from "@/components/ui/button";
 
 interface CronJob {
   id: string;
-  schedule?: string;
-  task?: string;
-  enabled?: boolean;
-  agent?: string;
+  name: string;
+  description?: string;
+  enabled: boolean;
+  agentId?: string;
+  schedule: unknown;
+  createdAtMs?: number;
+  updatedAtMs?: number;
   [key: string]: unknown;
 }
 
+interface CronListResponse {
+  jobs?: CronJob[];
+  total?: number;
+  hasMore?: boolean;
+}
+
 export function CronPanel() {
-  const { data, error, isLoading, mutate } = useGatewayRpc<CronJob[]>("cron.list");
+  const { data, error, isLoading, mutate } = useGatewayRpc<CronListResponse>("cron.list");
   const callRpc = useGatewayRpcMutation();
 
   const handleToggle = async (id: string, currentlyEnabled: boolean) => {
-    const method = currentlyEnabled ? "cron.disable" : "cron.enable";
     try {
-      await callRpc(method, { id });
+      await callRpc("cron.update", { id, patch: { enabled: !currentlyEnabled } });
       mutate();
     } catch (err) {
       console.error("Failed to toggle cron job:", err);
@@ -29,7 +37,7 @@ export function CronPanel() {
 
   const handleRun = async (id: string) => {
     try {
-      await callRpc("cron.run", { id });
+      await callRpc("cron.run", { id, mode: "force" });
     } catch (err) {
       console.error("Failed to run cron job:", err);
     }
@@ -54,7 +62,7 @@ export function CronPanel() {
     );
   }
 
-  const jobs = Array.isArray(data) ? data : [];
+  const jobs = data?.jobs ?? (Array.isArray(data) ? data as unknown as CronJob[] : []);
 
   return (
     <div className="p-6 space-y-4">
@@ -74,7 +82,7 @@ export function CronPanel() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Clock className="h-3.5 w-3.5 opacity-50" />
-                  <span className="text-sm font-medium">{job.task || job.id}</span>
+                  <span className="text-sm font-medium">{job.name || job.id}</span>
                 </div>
                 <div className="flex gap-1">
                   <Button variant="ghost" size="sm" onClick={() => handleRun(job.id)}>
@@ -90,8 +98,12 @@ export function CronPanel() {
                 </div>
               </div>
               <div className="text-xs text-muted-foreground">
-                {job.schedule || "—"} {job.agent ? `· ${job.agent}` : ""}
+                {typeof job.schedule === "string" ? job.schedule : job.schedule ? JSON.stringify(job.schedule) : "\u2014"}{" "}
+                {job.agentId ? `\u00b7 ${job.agentId}` : ""}
               </div>
+              {job.description && (
+                <div className="text-xs text-muted-foreground/70">{job.description}</div>
+              )}
             </div>
           ))}
         </div>

@@ -16,19 +16,22 @@ interface Session {
 }
 
 interface SessionsResponse {
+  ts?: number;
+  count?: number;
+  defaults?: { model?: string };
   sessions?: Session[];
 }
 
 export function SessionsPanel() {
   const { data: rawData, error, isLoading, mutate } = useGatewayRpc<SessionsResponse | Session[]>(
     "sessions.list",
-    { includeDerivedTitles: true, includeLastMessage: true },
+    { includeGlobal: true, includeUnknown: true, includeDerivedTitles: true, includeLastMessage: true },
   );
   const callRpc = useGatewayRpcMutation();
 
   const handleDelete = async (key: string) => {
     try {
-      await callRpc("sessions.delete", { key });
+      await callRpc("sessions.delete", { key, deleteTranscript: true });
       mutate();
     } catch (err) {
       console.error("Failed to delete session:", err);
