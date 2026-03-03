@@ -38,13 +38,30 @@ interface ModelCatalogEntry {
   alias?: string;
 }
 
-interface ConfigResponse {
+interface ConfigSnapshot {
+  path: string;
+  exists: boolean;
+  raw: string | null;
+  config: ConfigInner;
+  hash?: string;
+  valid: boolean;
+}
+
+interface AgentConfigEntry {
+  id: string;
+  model?: string | { primary?: string; fallbacks?: string[] };
+  [key: string]: unknown;
+}
+
+interface ConfigInner {
   agents?: {
     defaults?: {
       models?: Record<string, ModelCatalogEntry>;
-      model?: { primary?: string };
+      model?: string | { primary?: string };
     };
+    list?: AgentConfigEntry[];
   };
+  [key: string]: unknown;
 }
 
 interface AgentsListResponse {
@@ -217,36 +234,101 @@ function AgentTabContent({ agentId, agent, tab, onAgentUpdated }: { agentId: str
 }
 
 // ---------------------------------------------------------------------------
-// Overview tab (unchanged logic, uses agent.identity.get + agents.update)
+// Overview tab — reads model from config (matching OpenClaw reference pattern)
 // ---------------------------------------------------------------------------
+
+/** Resolve the primary model string from a model value (string or {primary, fallbacks}). */
+function resolveModelPrimary(model?: string | { primary?: string; fallbacks?: string[] }): string | undefined {
+  if (typeof model === "string") return model.trim() || undefined;
+  if (typeof model === "object" && model) return model.primary?.trim() || undefined;
+  return undefined;
+}
 
 function AgentOverviewTab({ agentId, agent, onAgentUpdated }: { agentId: string; agent?: AgentEntry; onAgentUpdated?: () => void }) {
   const { data } = useGatewayRpc<Record<string, unknown>>(
     "agent.identity.get",
     { agentId },
   );
-  const { data: configData } = useGatewayRpc<ConfigResponse>("config.get");
+  const { data: configSnapshot, mutate: mutateConfig } = useGatewayRpc<ConfigSnapshot>("config.get");
   const callRpc = useGatewayRpcMutation();
   const [updatingModel, setUpdatingModel] = useState(false);
+  const [modelError, setModelError] = useState<string | null>(null);
 
   const identity = data || agent?.identity;
 
-  // Build model catalog from config
-  const modelsCatalog = configData?.agents?.defaults?.models ?? {};
-  const defaultModel = configData?.agents?.defaults?.model?.primary;
-  const currentModel = agent?.model || defaultModel || "";
+  // config.get returns a ConfigSnapshot wrapper; actual config is under .config
+  const configInner = configSnapshot?.config;
 
+  // Model catalog: agents.defaults.models (dict of modelId -> { alias? })
+  const modelsCatalog = configInner?.agents?.defaults?.models ?? {};
+
+  // Default model: agents.defaults.model (string or { primary })
+  const defaultModelPrimary = resolveModelPrimary(configInner?.agents?.defaults?.model);
+
+  // Per-agent model: agents.list[].model where id matches (reference pattern)
+  const agentConfigEntry = configInner?.agents?.list?.find(a => a?.id === agentId);
+  const agentModelPrimary = resolveModelPrimary(agentConfigEntry?.model);
+
+  // Effective model: per-agent overrides default
+  const currentModel = agentModelPrimary || defaultModelPrimary || "";
+
+  // Save model via config.set with full config (matching OpenClaw reference).
+  // Modifies agents.list[].model for the specific agent, then sends the
+  // entire config as raw JSON — the proven approach from the reference UI.
   const handleModelChange = useCallback(async (newModel: string) => {
+    if (!configSnapshot?.config || !configSnapshot.hash) {
+      setModelError("Config not loaded yet. Please wait and try again.");
+      return;
+    }
     setUpdatingModel(true);
+    setModelError(null);
     try {
-      await callRpc("agents.update", { agentId, model: newModel });
+      // Deep-clone the config object
+      const fullConfig = JSON.parse(JSON.stringify(configSnapshot.config));
+
+      // Ensure agents.list exists
+      if (!fullConfig.agents) fullConfig.agents = {};
+      if (!Array.isArray(fullConfig.agents.list)) fullConfig.agents.list = [];
+
+      // Find agent in list
+      const agentEntry = fullConfig.agents.list.find(
+        (a: AgentConfigEntry) => a?.id === agentId,
+      );
+
+      if (agentEntry) {
+        // Preserve existing fallbacks if model was an object
+        const existing = agentEntry.model;
+        if (existing && typeof existing === "object" && !Array.isArray(existing)) {
+          const fallbacks = (existing as { fallbacks?: string[] }).fallbacks;
+          agentEntry.model = {
+            primary: newModel,
+            ...(Array.isArray(fallbacks) ? { fallbacks } : {}),
+          };
+        } else {
+          agentEntry.model = newModel;
+        }
+      } else {
+        // Agent not in list — add it
+        fullConfig.agents.list.push({ id: agentId, model: newModel });
+      }
+
+      // Send full config via config.set (same approach as reference UI)
+      await callRpc("config.set", {
+        raw: JSON.stringify(fullConfig, null, 2),
+        baseHash: configSnapshot.hash,
+      });
+
+      // Refresh config and agent list after save
+      mutateConfig();
       onAgentUpdated?.();
     } catch (err) {
-      console.error("Failed to update model:", err);
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error("Failed to update model:", msg);
+      setModelError(msg);
     } finally {
       setUpdatingModel(false);
     }
-  }, [callRpc, agentId, onAgentUpdated]);
+  }, [callRpc, agentId, configSnapshot, onAgentUpdated, mutateConfig]);
 
   // Build options list — catalog models + current model if not in catalog
   const modelOptions: { id: string; label: string }[] = Object.entries(modelsCatalog).map(
@@ -255,6 +337,9 @@ function AgentOverviewTab({ agentId, agent, onAgentUpdated }: { agentId: string;
   if (currentModel && !modelsCatalog[currentModel]) {
     modelOptions.unshift({ id: currentModel, label: `Current (${currentModel.split("/").pop()})` });
   }
+
+  // Is this the default agent? (no per-agent override = inherits default)
+  const isDefault = !agentModelPrimary;
 
   return (
     <div className="space-y-4 mt-2">
@@ -271,25 +356,37 @@ function AgentOverviewTab({ agentId, agent, onAgentUpdated }: { agentId: string;
       {/* Model selector */}
       <div className="rounded-lg border border-border p-4 space-y-3">
         <h3 className="text-sm font-medium">Model</h3>
-        {modelOptions.length > 0 ? (
+        {modelOptions.length > 0 || defaultModelPrimary ? (
           <select
             className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-            value={currentModel}
+            value={isDefault ? "" : currentModel}
             onChange={(e) => handleModelChange(e.target.value)}
-            disabled={updatingModel}
+            disabled={updatingModel || !configSnapshot?.hash}
           >
+            {!isDefault && (
+              <option value="">
+                {defaultModelPrimary
+                  ? `Inherit default (${defaultModelPrimary.split("/").pop()})`
+                  : "Inherit default"}
+              </option>
+            )}
             {modelOptions.map((opt) => (
               <option key={opt.id} value={opt.id}>
-                {opt.label}{opt.id === defaultModel ? " (default)" : ""}
+                {opt.label}{opt.id === defaultModelPrimary ? " (default)" : ""}
               </option>
             ))}
           </select>
         ) : (
           <p className="text-xs text-muted-foreground">
-            {currentModel ? currentModel.split("/").pop() : "No model configured"}
+            {currentModel ? currentModel.split("/").pop() : "No models configured in gateway"}
           </p>
         )}
         {updatingModel && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
+        {modelError && (
+          <p className="text-xs text-destructive flex items-center gap-1">
+            <AlertCircle className="h-3 w-3" /> {modelError}
+          </p>
+        )}
       </div>
 
       {/* Raw data */}

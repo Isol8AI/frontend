@@ -70,12 +70,6 @@ interface ConfigSnapshot {
   issues?: { path: string; message: string }[];
 }
 
-interface ConfigPatchResult {
-  ok: boolean;
-  config: Record<string, unknown>;
-  restart?: { delayMs?: number };
-}
-
 interface WebLoginResult {
   message?: string;
   qrDataUrl?: string;
@@ -348,26 +342,39 @@ export function ChannelsPanel() {
 
   const handleSaveConfig = useCallback(
     async (channelId: string, values: Record<string, string>) => {
+      const snapshot = configData as ConfigSnapshot | undefined;
+      if (!snapshot?.config || !snapshot.hash) {
+        setActionError("Config not loaded yet. Please wait and try again.");
+        return;
+      }
       setActionBusy(`save-${channelId}`);
       setActionError(null);
       try {
-        // Build partial config patch
-        const patch: Record<string, unknown> = {
-          channels: { [channelId]: {} as Record<string, unknown> },
-        };
-        const channelPatch = (patch.channels as Record<string, Record<string, unknown>>)[channelId];
+        // Deep-clone the full config and apply channel values (reference pattern:
+        // modify local config then config.set with the entire raw JSON).
+        const fullConfig = JSON.parse(JSON.stringify(snapshot.config)) as Record<string, unknown>;
+
+        // Ensure channels object exists
+        if (!fullConfig.channels || typeof fullConfig.channels !== "object") {
+          fullConfig.channels = {};
+        }
+        const channels = fullConfig.channels as Record<string, Record<string, unknown>>;
+        if (!channels[channelId] || typeof channels[channelId] !== "object") {
+          channels[channelId] = {};
+        }
+        const channelConf = channels[channelId];
+
         for (const [key, value] of Object.entries(values)) {
           // Don't send redacted values back — they haven't changed
           if (value !== REDACTED_SENTINEL && value !== "") {
-            channelPatch[key] = value;
+            channelConf[key] = value;
           }
         }
 
-        const baseHash = (configData as ConfigSnapshot | undefined)?.hash;
-        await callRpc<ConfigPatchResult>("config.patch", {
-          raw: JSON.stringify(patch),
-          ...(baseHash ? { baseHash } : {}),
-          note: `Configure ${channelId} from UI`,
+        // Send full config via config.set (same approach as OpenClaw reference UI)
+        await callRpc("config.set", {
+          raw: JSON.stringify(fullConfig, null, 2),
+          baseHash: snapshot.hash,
         });
 
         // Refresh config and status after save
