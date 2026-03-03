@@ -38,7 +38,9 @@ export default function ChatPage() {
           <AgentChatWindow key={selectedAgentId} agentId={selectedAgentId} />
         </div>
         {activeView === "control" && (
-          <ControlIframe />
+          <div className="flex flex-col h-full min-h-0">
+            <ControlIframe />
+          </div>
         )}
       </ChatLayout>
     </GatewayProvider>

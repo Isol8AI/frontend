@@ -46,7 +46,7 @@ export function ControlIframe() {
   return (
     <iframe
       src={src}
-      className="w-full h-full border-0"
+      className="w-full flex-1 min-h-0 border-0"
       title="OpenClaw Control Panel"
       allow="clipboard-write"
     />
