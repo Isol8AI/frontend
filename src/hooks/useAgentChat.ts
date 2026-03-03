@@ -16,6 +16,26 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import { useGateway, type ChatIncomingMessage } from "@/hooks/useGateway";
 
 // =============================================================================
+// Friendly error messages
+// =============================================================================
+
+const ERROR_PATTERNS: [RegExp, string][] = [
+  [/timed out during opening handshake/i, "Your agent is starting up — please try again in a moment."],
+  [/Gateway connection lost/i, "Lost connection to your agent. Retrying..."],
+  [/Connection closed/i, "Connection to your agent was interrupted. Please try again."],
+  [/session file locked/i, "Your agent is busy with another request. Please wait a moment and try again."],
+  [/Model access is denied/i, "This model is not available. Try switching to a different model in settings."],
+  [/Agent run failed/i, "Your agent encountered an error. Please try again."],
+];
+
+function friendlyError(raw: string): string {
+  for (const [pattern, friendly] of ERROR_PATTERNS) {
+    if (pattern.test(raw)) return friendly;
+  }
+  return raw;
+}
+
+// =============================================================================
 // Types
 // =============================================================================
 
@@ -102,16 +122,17 @@ export function useAgentChat(agentId: string | null): UseAgentChatReturn {
       }
 
       if (msg.type === "error") {
+        const displayError = friendlyError(msg.message);
         if (currentAssistantIdRef.current) {
           setMessages((prev) =>
             prev.map((m) =>
               m.id === currentAssistantIdRef.current
-                ? { ...m, content: `Error: ${msg.message}` }
+                ? { ...m, content: displayError }
                 : m,
             ),
           );
         }
-        setError(msg.message);
+        setError(displayError);
         setIsStreaming(false);
         currentAssistantIdRef.current = null;
         streamContentRef.current = "";
@@ -199,13 +220,14 @@ export function useAgentChat(agentId: string | null): UseAgentChatReturn {
       try {
         sendChat(agentIdRef.current, message);
       } catch (err) {
-        const errorMessage =
-          err instanceof Error ? err.message : "Failed to send message";
+        const errorMessage = friendlyError(
+          err instanceof Error ? err.message : "Failed to send message",
+        );
         setError(errorMessage);
         setMessages((prev) =>
           prev.map((m) =>
             m.id === assistantMsgId
-              ? { ...m, content: `Error: ${errorMessage}` }
+              ? { ...m, content: errorMessage }
               : m,
           ),
         );
