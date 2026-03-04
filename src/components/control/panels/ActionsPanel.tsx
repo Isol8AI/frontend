@@ -6,10 +6,8 @@ import {
   RefreshCw,
   ShieldCheck,
   UserPlus,
-  Globe,
   AlertCircle,
   CheckCircle2,
-  KeyRound,
   Radio,
 } from "lucide-react";
 import { useGatewayRpc, useGatewayRpcMutation } from "@/hooks/useGatewayRpc";
@@ -32,8 +30,7 @@ interface ConfigSnapshot {
 const PAIRING_CHANNELS = [
   { id: "telegram", label: "Telegram", idLabel: "Telegram User ID", idPlaceholder: "123456789" },
   { id: "discord", label: "Discord", idLabel: "Discord User ID", idPlaceholder: "123456789012345678" },
-  { id: "slack", label: "Slack", idLabel: "Slack User ID", idPlaceholder: "U01ABC2DEF3" },
-  { id: "signal", label: "Signal", idLabel: "Phone Number", idPlaceholder: "+1234567890" },
+  { id: "whatsapp", label: "WhatsApp", idLabel: "Phone Number", idPlaceholder: "+1234567890" },
 ];
 
 /* ── Component ─────────────────────────────────────────── */
@@ -115,20 +112,6 @@ export function ActionsPanel() {
       `Allow ${userId} on ${selectedChannel}`,
       { channels: { [selectedChannel]: { allowFrom: [...current, userId] } } },
       () => setUserIdInput(""),
-    );
-  };
-
-  const handleSetOpen = (channelId: string) => {
-    patchConfig(
-      `Set ${channelId} to open`,
-      { channels: { [channelId]: { dmPolicy: "open" } } },
-    );
-  };
-
-  const handleSetPairing = (channelId: string) => {
-    patchConfig(
-      `Set ${channelId} to pairing`,
-      { channels: { [channelId]: { dmPolicy: "pairing" } } },
     );
   };
 
@@ -266,32 +249,6 @@ export function ActionsPanel() {
                       >
                         {policy}
                       </span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    {policy !== "open" && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-6 px-2 text-[11px]"
-                        disabled={busy !== null}
-                        onClick={() => handleSetOpen(ch.id)}
-                      >
-                        <Globe className="h-3 w-3 mr-1" />
-                        Set Open
-                      </Button>
-                    )}
-                    {policy === "open" && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-6 px-2 text-[11px]"
-                        disabled={busy !== null}
-                        onClick={() => handleSetPairing(ch.id)}
-                      >
-                        <KeyRound className="h-3 w-3 mr-1" />
-                        Set Pairing
-                      </Button>
                     )}
                   </div>
                 </div>
