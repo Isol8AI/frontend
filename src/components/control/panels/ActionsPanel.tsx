@@ -28,9 +28,30 @@ interface ConfigSnapshot {
 /* ── Channel definitions ───────────────────────────────── */
 
 const PAIRING_CHANNELS = [
-  { id: "telegram", label: "Telegram", idLabel: "Telegram User ID", idPlaceholder: "123456789" },
-  { id: "discord", label: "Discord", idLabel: "Discord User ID", idPlaceholder: "123456789012345678" },
-  { id: "whatsapp", label: "WhatsApp", idLabel: "Phone Number", idPlaceholder: "+1234567890" },
+  {
+    id: "telegram",
+    label: "Telegram",
+    idLabel: "Numeric Telegram User ID",
+    idPlaceholder: "7895038573",
+    help: "Enter the numeric user ID shown in the pairing message (not the pairing code).",
+    validate: (v: string) => /^\d+$/.test(v) ? null : "Telegram requires a numeric user ID, not the pairing code.",
+  },
+  {
+    id: "discord",
+    label: "Discord",
+    idLabel: "Discord User ID",
+    idPlaceholder: "123456789012345678",
+    help: "Enter the numeric Discord user ID (enable Developer Mode to copy it).",
+    validate: (v: string) => /^\d+$/.test(v) ? null : "Discord user IDs are numeric.",
+  },
+  {
+    id: "whatsapp",
+    label: "WhatsApp",
+    idLabel: "Phone Number",
+    idPlaceholder: "+1234567890",
+    help: "Enter the full phone number with country code.",
+    validate: (_v: string) => null,
+  },
 ];
 
 /* ── Component ─────────────────────────────────────────── */
@@ -100,9 +121,16 @@ export function ActionsPanel() {
     [callRpc, configData, mutateConfig],
   );
 
+  const selectedDef = PAIRING_CHANNELS.find((c) => c.id === selectedChannel)!;
+
   const handleAddUser = () => {
     const userId = userIdInput.trim();
     if (!userId) return;
+    const validationError = selectedDef.validate(userId);
+    if (validationError) {
+      setFeedback({ type: "error", message: validationError });
+      return;
+    }
     const current = getCurrentAllowFrom(selectedChannel);
     if (current.includes(userId)) {
       setFeedback({ type: "error", message: `${userId} is already in the allowlist.` });
@@ -122,8 +150,6 @@ export function ActionsPanel() {
       { channels: { [channelId]: { allowFrom: current.filter((id) => id !== userId) } } },
     );
   };
-
-  const selectedDef = PAIRING_CHANNELS.find((c) => c.id === selectedChannel)!;
 
   return (
     <div className="p-6 space-y-6 overflow-auto">
@@ -172,9 +198,13 @@ export function ActionsPanel() {
           <h3 className="text-sm font-semibold">Add to Allowlist</h3>
         </div>
         <p className="text-xs text-muted-foreground">
-          When someone messages your bot and gets a pairing code, add their user ID
-          here to grant access. You can find the ID in the pairing message they received.
+          {selectedDef.help}
         </p>
+        <div className="rounded-md border border-amber-500/20 bg-amber-500/5 p-2.5 text-xs text-amber-400">
+          When someone messages your bot, they&apos;ll receive a pairing message containing
+          both a <strong>pairing code</strong> and their <strong>numeric user ID</strong>.
+          Enter the <strong>user ID</strong> below — not the pairing code.
+        </div>
         <div className="flex items-center gap-2 flex-wrap">
           <select
             className="h-9 rounded-md border border-input bg-background px-2 text-xs outline-none focus:ring-1 focus:ring-ring"
