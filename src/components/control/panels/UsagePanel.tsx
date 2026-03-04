@@ -48,52 +48,34 @@ interface UsageResponse {
   by_day: DailyUsage[];
 }
 
-// Gateway RPC types (from usage.cost)
-interface GatewayUsageData {
-  total_tokens?: number;
-  total_cost?: number;
-  sessions?: Array<{
-    id: string;
-    agent?: string;
-    tokens?: number;
-    cost?: number;
-    [key: string]: unknown;
-  }>;
+// Gateway sessions.list types
+interface GatewaySession {
+  key: string;
+  agentId?: string;
+  model?: string;
+  label?: string;
+  displayName?: string;
+  inputTokens?: number;
+  outputTokens?: number;
+  totalTokens?: number;
+  updatedAt?: number | null;
   [key: string]: unknown;
 }
 
-type DateRange = "7d" | "30d" | "90d";
+interface SessionsListResponse {
+  sessions?: GatewaySession[];
+  count?: number;
+  [key: string]: unknown;
+}
 
 // =============================================================================
 // Helpers
 // =============================================================================
 
-function formatDate(d: Date): string {
-  return d.toISOString().split("T")[0];
-}
-
-function getDateRange(range: DateRange): { startDate: string; endDate: string } {
-  const end = new Date();
-  const start = new Date();
-  switch (range) {
-    case "7d":
-      start.setDate(start.getDate() - 7);
-      break;
-    case "30d":
-      start.setDate(start.getDate() - 30);
-      break;
-    case "90d":
-      start.setDate(start.getDate() - 90);
-      break;
-  }
-  return { startDate: formatDate(start), endDate: formatDate(end) };
-}
-
 /** Shorten a model ID like "us.anthropic.claude-3-5-sonnet-20241022-v2:0" → "claude-3.5-sonnet" */
 function shortModelName(model: string): string {
   const parts = model.split(".");
   const last = parts[parts.length - 1] || model;
-  // Strip version suffixes like -20241022-v2:0
   return last.replace(/-\d{8}.*$/, "").replace(/:.*$/, "");
 }
 
@@ -101,11 +83,11 @@ function formatDollars(amount: number, decimals = 2): string {
   return `$${amount.toFixed(decimals)}`;
 }
 
-const RANGE_OPTIONS: { id: DateRange; label: string }[] = [
-  { id: "7d", label: "7d" },
-  { id: "30d", label: "30d" },
-  { id: "90d", label: "90d" },
-];
+function formatTokens(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return n.toLocaleString();
+}
 
 // =============================================================================
 // Component
@@ -141,18 +123,49 @@ export function UsagePanel() {
     fetchBilling();
   }, [fetchBilling]);
 
-  // --- Gateway RPC data ---
-  const [range, setRange] = useState<DateRange>("30d");
-  const dateRange = useMemo(() => getDateRange(range), [range]);
+  // --- Gateway session data (real token counts from OpenClaw) ---
   const {
-    data: gatewayData,
-    error: gatewayError,
-    isLoading: gatewayLoading,
-    mutate: mutateGateway,
-  } = useGatewayRpc<GatewayUsageData>("usage.cost", {
-    startDate: dateRange.startDate,
-    endDate: dateRange.endDate,
-  });
+    data: sessionsData,
+    error: sessionsError,
+    isLoading: sessionsLoading,
+    mutate: mutateSessions,
+  } = useGatewayRpc<SessionsListResponse>("sessions.list");
+
+  // Aggregate session token data
+  const sessionStats = useMemo(() => {
+    const sessions = sessionsData?.sessions ?? [];
+    let totalInput = 0;
+    let totalOutput = 0;
+    let totalTokens = 0;
+    const byAgent: Record<string, { input: number; output: number; total: number; sessions: number }> = {};
+
+    for (const s of sessions) {
+      const inp = s.inputTokens ?? 0;
+      const out = s.outputTokens ?? 0;
+      const tot = s.totalTokens ?? (inp + out);
+      totalInput += inp;
+      totalOutput += out;
+      totalTokens += tot;
+
+      const agentKey = s.agentId || s.displayName || s.label || s.key;
+      if (!byAgent[agentKey]) {
+        byAgent[agentKey] = { input: 0, output: 0, total: 0, sessions: 0 };
+      }
+      byAgent[agentKey].input += inp;
+      byAgent[agentKey].output += out;
+      byAgent[agentKey].total += tot;
+      byAgent[agentKey].sessions += 1;
+    }
+
+    return {
+      totalInput,
+      totalOutput,
+      totalTokens,
+      sessionCount: sessions.length,
+      byAgent: Object.entries(byAgent)
+        .sort(([, a], [, b]) => b.total - a.total),
+    };
+  }, [sessionsData]);
 
   // --- Derived values ---
   const period = account?.current_period;
@@ -163,11 +176,11 @@ export function UsagePanel() {
 
   const handleRefresh = useCallback(() => {
     fetchBilling();
-    mutateGateway();
-  }, [fetchBilling, mutateGateway]);
+    mutateSessions();
+  }, [fetchBilling, mutateSessions]);
 
   // --- Loading state ---
-  if (billingLoading && gatewayLoading) {
+  if (billingLoading && sessionsLoading) {
     return (
       <div className="flex-1 flex items-center justify-center">
         <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
@@ -241,7 +254,7 @@ export function UsagePanel() {
         </>
       )}
 
-      {/* Cost Breakdown */}
+      {/* Cost Breakdown (from REST billing API) */}
       {usage && (
         <div className="rounded-lg border border-border p-4 space-y-3">
           <h3 className="text-sm font-medium">Cost Breakdown</h3>
@@ -264,80 +277,77 @@ export function UsagePanel() {
               <span className="font-mono text-emerald-600">{formatDollars(platformFee, 4)}</span>
             </div>
           </div>
+          {totalBillable === 0 && (
+            <div className="text-xs text-yellow-600 bg-yellow-500/10 px-2 py-1.5 rounded">
+              No billing data recorded yet. Token counts from the gateway may not be reaching the billing pipeline.
+            </div>
+          )}
           <div className="text-xs text-muted-foreground/60 pt-1">
             {usage.total_requests.toLocaleString()} total requests
           </div>
         </div>
       )}
 
-      {/* Gateway Stats (OpenClaw) */}
+      {/* Gateway Token Usage (from sessions.list) */}
       <div className="rounded-lg border border-border p-4 space-y-3">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-medium">Gateway Stats (OpenClaw)</h3>
-          <div className="flex gap-0.5">
-            {RANGE_OPTIONS.map((opt) => (
-              <button
-                key={opt.id}
-                className={cn(
-                  "px-2 py-0.5 text-[10px] rounded transition-colors",
-                  range === opt.id
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-muted/30 text-muted-foreground hover:bg-muted/50",
-                )}
-                onClick={() => setRange(opt.id)}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
-        </div>
+        <h3 className="text-sm font-medium">Gateway Token Usage</h3>
 
-        {gatewayLoading && (
+        {sessionsLoading && (
           <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
         )}
 
-        {gatewayError && (
-          <p className="text-xs text-destructive">{gatewayError.message}</p>
+        {sessionsError && (
+          <p className="text-xs text-destructive">{sessionsError.message}</p>
         )}
 
-        {gatewayData && (
+        {!sessionsLoading && !sessionsError && (
           <>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-3 gap-3">
               <div>
-                <div className="text-[10px] uppercase tracking-wider text-muted-foreground/60">Total Tokens</div>
-                <div className="text-lg font-semibold">{(gatewayData.total_tokens ?? 0).toLocaleString()}</div>
+                <div className="text-[10px] uppercase tracking-wider text-muted-foreground/60">Input</div>
+                <div className="text-lg font-semibold">{formatTokens(sessionStats.totalInput)}</div>
               </div>
               <div>
-                <div className="text-[10px] uppercase tracking-wider text-muted-foreground/60">Gateway Cost</div>
-                <div className="text-lg font-semibold">{formatDollars(gatewayData.total_cost ?? 0, 4)}</div>
+                <div className="text-[10px] uppercase tracking-wider text-muted-foreground/60">Output</div>
+                <div className="text-lg font-semibold">{formatTokens(sessionStats.totalOutput)}</div>
+              </div>
+              <div>
+                <div className="text-[10px] uppercase tracking-wider text-muted-foreground/60">Total</div>
+                <div className="text-lg font-semibold">{formatTokens(sessionStats.totalTokens)}</div>
               </div>
             </div>
 
             <div className="text-[10px] text-muted-foreground/50">
-              {dateRange.startDate} — {dateRange.endDate}
+              {sessionStats.sessionCount} sessions
             </div>
 
-            {gatewayData.sessions && gatewayData.sessions.length > 0 && (
+            {sessionStats.byAgent.length > 0 && (
               <div className="space-y-1">
-                <div className="text-xs text-muted-foreground font-medium">Sessions</div>
-                {gatewayData.sessions.map((s) => (
+                <div className="text-xs text-muted-foreground font-medium">By Agent</div>
+                {sessionStats.byAgent.map(([agent, stats]) => (
                   <div
-                    key={s.id}
+                    key={agent}
                     className="flex items-center justify-between px-2 py-1.5 rounded-md hover:bg-accent/50 text-xs"
                   >
-                    <span className="truncate">{s.agent || s.id}</span>
+                    <span className="truncate">{agent}</span>
                     <span className="text-muted-foreground flex-shrink-0 ml-2">
-                      {(s.tokens ?? 0).toLocaleString()} tokens · {formatDollars(s.cost ?? 0, 4)}
+                      {formatTokens(stats.total)} tokens · {stats.sessions} sessions
                     </span>
                   </div>
                 ))}
+              </div>
+            )}
+
+            {sessionStats.totalTokens === 0 && sessionStats.sessionCount === 0 && (
+              <div className="text-xs text-muted-foreground/60">
+                No session data. Start a conversation to see token usage.
               </div>
             )}
           </>
         )}
       </div>
 
-      {/* By Model table */}
+      {/* By Model table (from REST billing API) */}
       {usage && usage.by_model.length > 0 && (
         <div className="rounded-lg border border-border overflow-hidden">
           <div className="px-4 py-2 bg-muted/20 border-b border-border">
@@ -382,10 +392,10 @@ export function UsagePanel() {
       {/* Raw data */}
       <details className="group">
         <summary className="text-xs text-muted-foreground/60 cursor-pointer hover:text-muted-foreground">
-          Raw billing data
+          Raw data
         </summary>
         <pre className="mt-2 text-xs bg-muted/30 rounded-lg p-3 overflow-auto max-h-48">
-          {JSON.stringify({ account, usage, gatewayData }, null, 2)}
+          {JSON.stringify({ account, usage, sessionsData }, null, 2)}
         </pre>
       </details>
     </div>
