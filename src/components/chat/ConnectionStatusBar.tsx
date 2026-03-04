@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Wifi, WifiOff, RefreshCw, RotateCcw, Loader2 } from "lucide-react";
 import { useGateway } from "@/hooks/useGateway";
 import { useGatewayRpc } from "@/hooks/useGatewayRpc";
@@ -63,10 +63,8 @@ export function ConnectionStatusBar() {
     enabled: shouldPollContainer,
   });
 
-  const [visible, setVisible] = useState(true);
+  const [hiddenForState, setHiddenForState] = useState<ConnectionState | null>(null);
   const [restarting, setRestarting] = useState(false);
-  const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const prevStateRef = useRef<ConnectionState | null>(null);
 
   // ---------------------------------------------------------------------------
   // Derive connection state
@@ -92,32 +90,14 @@ export function ConnectionStatusBar() {
   })();
 
   // ---------------------------------------------------------------------------
-  // Auto-hide when connected
+  // Auto-hide when connected (timer sets hiddenForState to current state)
+  // Bar is hidden only when hiddenForState matches current connectionState
   // ---------------------------------------------------------------------------
 
   useEffect(() => {
-    if (hideTimerRef.current) {
-      clearTimeout(hideTimerRef.current);
-      hideTimerRef.current = null;
-    }
-
-    if (connectionState === "connected") {
-      // Show briefly then auto-hide
-      setVisible(true);
-      hideTimerRef.current = setTimeout(() => {
-        setVisible(false);
-      }, 3000);
-    } else {
-      setVisible(true);
-    }
-
-    prevStateRef.current = connectionState;
-
-    return () => {
-      if (hideTimerRef.current) {
-        clearTimeout(hideTimerRef.current);
-      }
-    };
+    if (connectionState !== "connected") return;
+    const timer = setTimeout(() => setHiddenForState("connected"), 3000);
+    return () => clearTimeout(timer);
   }, [connectionState]);
 
   // ---------------------------------------------------------------------------
@@ -156,7 +136,8 @@ export function ConnectionStatusBar() {
   // Render helpers
   // ---------------------------------------------------------------------------
 
-  if (!visible) return null;
+  // Hidden only when the timer fired for the CURRENT state (auto-resets on state change)
+  if (hiddenForState === connectionState) return null;
 
   const icon = (() => {
     switch (connectionState) {
