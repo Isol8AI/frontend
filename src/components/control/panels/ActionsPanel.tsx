@@ -5,12 +5,12 @@ import {
   Loader2,
   RefreshCw,
   ShieldCheck,
-  UserCheck,
-  UserX,
-  Radio,
+  UserPlus,
+  Globe,
   AlertCircle,
   CheckCircle2,
   KeyRound,
+  Radio,
 } from "lucide-react";
 import { useGatewayRpc, useGatewayRpcMutation } from "@/hooks/useGatewayRpc";
 import { Button } from "@/components/ui/button";
@@ -19,88 +19,77 @@ import { cn } from "@/lib/utils";
 
 /* ── Types ─────────────────────────────────────────────── */
 
-interface PairingRequest {
-  id: string;
-  code: string;
-  channel?: string;
-  createdAt?: string;
-  lastSeenAt?: string;
-  meta?: {
-    username?: string;
-    firstName?: string;
-    lastName?: string;
-    accountId?: string;
-    [key: string]: unknown;
-  };
+interface ConfigSnapshot {
+  raw: string | null;
+  config: Record<string, unknown>;
+  hash?: string;
+  valid: boolean;
   [key: string]: unknown;
 }
 
-interface PairingListResponse {
-  requests?: PairingRequest[];
-  [key: string]: unknown;
-}
+/* ── Channel definitions ───────────────────────────────── */
 
-/* ── Helpers ───────────────────────────────────────────── */
-
-function formatRelativeTime(iso: string | undefined): string {
-  if (!iso) return "n/a";
-  const diff = Date.now() - new Date(iso).getTime();
-  if (diff < 0) return "just now";
-  const secs = Math.floor(diff / 1000);
-  if (secs < 60) return `${secs}s ago`;
-  const mins = Math.floor(secs / 60);
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  return `${Math.floor(hrs / 24)}d ago`;
-}
-
-function pairingDisplayName(req: PairingRequest): string {
-  const meta = req.meta;
-  if (!meta) return req.id;
-  const parts: string[] = [];
-  if (meta.firstName) parts.push(meta.firstName);
-  if (meta.lastName) parts.push(meta.lastName);
-  if (parts.length > 0) return parts.join(" ");
-  if (meta.username) return `@${meta.username}`;
-  return req.id;
-}
+const PAIRING_CHANNELS = [
+  { id: "telegram", label: "Telegram", idLabel: "Telegram User ID", idPlaceholder: "123456789" },
+  { id: "discord", label: "Discord", idLabel: "Discord User ID", idPlaceholder: "123456789012345678" },
+  { id: "slack", label: "Slack", idLabel: "Slack User ID", idPlaceholder: "U01ABC2DEF3" },
+  { id: "signal", label: "Signal", idLabel: "Phone Number", idPlaceholder: "+1234567890" },
+];
 
 /* ── Component ─────────────────────────────────────────── */
 
 export function ActionsPanel() {
   const callRpc = useGatewayRpcMutation();
-
-  // Pairing requests
   const {
-    data: pairingData,
-    error: pairingError,
-    isLoading: pairingLoading,
-    mutate: mutatePairing,
-  } = useGatewayRpc<PairingListResponse>("device.pair.list");
+    data: configData,
+    mutate: mutateConfig,
+  } = useGatewayRpc<ConfigSnapshot>("config.get");
 
-  // Manual code input
-  const [codeInput, setCodeInput] = useState("");
+  // Form state
+  const [selectedChannel, setSelectedChannel] = useState("telegram");
+  const [userIdInput, setUserIdInput] = useState("");
 
-  // Action feedback
+  // Feedback
   const [busy, setBusy] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{
     type: "success" | "error";
     message: string;
   } | null>(null);
 
-  const runAction = useCallback(
-    async (
-      label: string,
-      method: string,
-      params?: Record<string, unknown>,
-      postAction?: () => void,
-    ) => {
+  // Extract current config for display
+  const config = configData?.config ?? {};
+  const channels = (config.channels ?? {}) as Record<string, Record<string, unknown>>;
+
+  const getCurrentAllowFrom = (channelId: string): string[] => {
+    const ch = channels[channelId];
+    if (!ch) return [];
+    const af = ch.allowFrom;
+    if (Array.isArray(af)) return af.map(String);
+    return [];
+  };
+
+  const getCurrentDmPolicy = (channelId: string): string => {
+    const ch = channels[channelId];
+    if (!ch) return "pairing";
+    return String(ch.dmPolicy ?? "pairing");
+  };
+
+  const patchConfig = useCallback(
+    async (label: string, patch: Record<string, unknown>, postAction?: () => void) => {
+      const snapshot = configData as ConfigSnapshot | undefined;
+      if (!snapshot?.hash) {
+        setFeedback({ type: "error", message: "Config not loaded yet. Please wait." });
+        return;
+      }
       setBusy(label);
       setFeedback(null);
       try {
-        await callRpc(method, params);
-        setFeedback({ type: "success", message: `${label}: success` });
+        await callRpc("config.patch", {
+          raw: JSON.stringify(patch),
+          baseHash: snapshot.hash,
+        });
+        setFeedback({ type: "success", message: `${label}: success. Gateway restarting...` });
+        mutateConfig();
         postAction?.();
       } catch (err) {
         setFeedback({
@@ -111,28 +100,61 @@ export function ActionsPanel() {
         setBusy(null);
       }
     },
-    [callRpc],
+    [callRpc, configData, mutateConfig],
   );
 
-  const handleApproveCode = () => {
-    const code = codeInput.trim().toUpperCase();
-    if (!code) return;
-    runAction("Approve pairing", "device.pair.approve", { code }, () => {
-      setCodeInput("");
-      mutatePairing();
-    });
+  const handleAddUser = () => {
+    const userId = userIdInput.trim();
+    if (!userId) return;
+    const current = getCurrentAllowFrom(selectedChannel);
+    if (current.includes(userId)) {
+      setFeedback({ type: "error", message: `${userId} is already in the allowlist.` });
+      return;
+    }
+    patchConfig(
+      `Allow ${userId} on ${selectedChannel}`,
+      { channels: { [selectedChannel]: { allowFrom: [...current, userId] } } },
+      () => setUserIdInput(""),
+    );
   };
 
-  const requests = pairingData?.requests ?? [];
+  const handleSetOpen = (channelId: string) => {
+    patchConfig(
+      `Set ${channelId} to open`,
+      { channels: { [channelId]: { dmPolicy: "open" } } },
+    );
+  };
+
+  const handleSetPairing = (channelId: string) => {
+    patchConfig(
+      `Set ${channelId} to pairing`,
+      { channels: { [channelId]: { dmPolicy: "pairing" } } },
+    );
+  };
+
+  const handleRemoveUser = (channelId: string, userId: string) => {
+    const current = getCurrentAllowFrom(channelId);
+    patchConfig(
+      `Remove ${userId} from ${channelId}`,
+      { channels: { [channelId]: { allowFrom: current.filter((id) => id !== userId) } } },
+    );
+  };
+
+  const selectedDef = PAIRING_CHANNELS.find((c) => c.id === selectedChannel)!;
 
   return (
     <div className="p-6 space-y-6 overflow-auto">
       {/* Header */}
-      <div>
-        <h2 className="text-lg font-semibold">Device Pairing</h2>
-        <p className="text-xs text-muted-foreground">
-          Approve or reject pairing requests from messaging channels.
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-semibold">Channel Access</h2>
+          <p className="text-xs text-muted-foreground">
+            Control who can message your agent on each channel.
+          </p>
+        </div>
+        <Button variant="ghost" size="sm" onClick={() => mutateConfig()}>
+          <RefreshCw className="h-3.5 w-3.5" />
+        </Button>
       </div>
 
       {/* Feedback banner */}
@@ -160,162 +182,148 @@ export function ActionsPanel() {
         </div>
       )}
 
-      {/* ── Manual Code Approval ─────────────────────── */}
+      {/* ── Add User to Allowlist ────────────────────── */}
       <section className="space-y-3">
         <div className="flex items-center gap-2">
-          <KeyRound className="h-4 w-4 text-muted-foreground" />
-          <h3 className="text-sm font-semibold">Approve by Code</h3>
+          <UserPlus className="h-4 w-4 text-muted-foreground" />
+          <h3 className="text-sm font-semibold">Add to Allowlist</h3>
         </div>
         <p className="text-xs text-muted-foreground">
-          When someone messages your bot for the first time, they receive a pairing code.
-          Enter it here to approve access.
+          When someone messages your bot and gets a pairing code, add their user ID
+          here to grant access. You can find the ID in the pairing message they received.
         </p>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <select
+            className="h-9 rounded-md border border-input bg-background px-2 text-xs outline-none focus:ring-1 focus:ring-ring"
+            value={selectedChannel}
+            onChange={(e) => setSelectedChannel(e.target.value)}
+          >
+            {PAIRING_CHANNELS.map((ch) => (
+              <option key={ch.id} value={ch.id}>
+                {ch.label}
+              </option>
+            ))}
+          </select>
           <Input
-            className="h-9 w-48 font-mono uppercase text-sm tracking-wider"
-            placeholder="ABCD1234"
-            value={codeInput}
-            onChange={(e) => setCodeInput(e.target.value)}
+            className="h-9 w-52 font-mono text-sm"
+            placeholder={selectedDef.idPlaceholder}
+            value={userIdInput}
+            onChange={(e) => setUserIdInput(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter") handleApproveCode();
+              if (e.key === "Enter") handleAddUser();
             }}
-            maxLength={12}
           />
           <Button
             size="sm"
             className="bg-emerald-600 hover:bg-emerald-700"
-            disabled={!codeInput.trim() || busy !== null}
-            onClick={handleApproveCode}
+            disabled={!userIdInput.trim() || busy !== null}
+            onClick={handleAddUser}
           >
-            {busy === "Approve pairing" ? (
+            {busy?.startsWith("Allow") ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
             ) : (
-              <UserCheck className="h-3.5 w-3.5 mr-1" />
+              <UserPlus className="h-3.5 w-3.5 mr-1" />
             )}
-            Approve
+            Add
           </Button>
         </div>
       </section>
 
-      {/* ── Pending Requests ─────────────────────────── */}
+      {/* ── Per-Channel Status ───────────────────────── */}
       <section className="space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <ShieldCheck className="h-4 w-4 text-muted-foreground" />
-            <h3 className="text-sm font-semibold">Pending Requests</h3>
-          </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => mutatePairing()}
-            disabled={pairingLoading}
-          >
-            {pairingLoading ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <RefreshCw className="h-3.5 w-3.5" />
-            )}
-          </Button>
+        <div className="flex items-center gap-2">
+          <ShieldCheck className="h-4 w-4 text-muted-foreground" />
+          <h3 className="text-sm font-semibold">Channel Policies</h3>
         </div>
 
-        {pairingError && (
-          <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive">
-            {pairingError.message}
-          </div>
-        )}
+        <div className="space-y-3">
+          {PAIRING_CHANNELS.map((ch) => {
+            const policy = getCurrentDmPolicy(ch.id);
+            const allowFrom = getCurrentAllowFrom(ch.id);
+            const isConfigured = channels[ch.id] !== undefined;
 
-        {pairingLoading && !pairingData ? (
-          <div className="flex items-center justify-center py-4">
-            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-          </div>
-        ) : requests.length === 0 ? (
-          <p className="text-xs text-muted-foreground rounded-md border border-border/50 bg-muted/10 p-3">
-            No pending pairing requests. When someone messages your bot for the
-            first time, their request will appear here.
-          </p>
-        ) : (
-          <div className="space-y-2">
-            {requests.map((req) => (
+            return (
               <div
-                key={req.code}
+                key={ch.id}
                 className="rounded-lg border border-border p-3 space-y-2"
               >
-                <div className="min-w-0">
+                <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium truncate">
-                      {pairingDisplayName(req)}
-                    </span>
-                    {req.meta?.username && (
-                      <span className="text-xs text-muted-foreground">
-                        @{req.meta.username}
+                    <Radio className="h-3.5 w-3.5 text-muted-foreground" />
+                    <span className="text-sm font-medium">{ch.label}</span>
+                    {isConfigured && (
+                      <span
+                        className={cn(
+                          "text-[10px] font-medium px-1.5 py-0.5 rounded",
+                          policy === "open"
+                            ? "bg-emerald-500/10 text-emerald-400"
+                            : policy === "pairing"
+                              ? "bg-amber-500/10 text-amber-400"
+                              : policy === "disabled"
+                                ? "bg-red-500/10 text-red-400"
+                                : "bg-muted text-muted-foreground",
+                        )}
+                      >
+                        {policy}
                       </span>
                     )}
                   </div>
-                  <div className="flex items-center gap-3 text-[11px] text-muted-foreground mt-0.5">
-                    {req.channel && (
-                      <span className="inline-flex items-center gap-1">
-                        <Radio className="h-3 w-3" />
-                        {req.channel}
-                      </span>
+                  <div className="flex items-center gap-1.5">
+                    {policy !== "open" && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-6 px-2 text-[11px]"
+                        disabled={busy !== null}
+                        onClick={() => handleSetOpen(ch.id)}
+                      >
+                        <Globe className="h-3 w-3 mr-1" />
+                        Set Open
+                      </Button>
                     )}
-                    <span>ID: {req.id}</span>
-                    <span>
-                      Code:{" "}
-                      <code className="font-mono bg-muted/30 px-1 rounded">
-                        {req.code}
-                      </code>
-                    </span>
-                    <span>{formatRelativeTime(req.createdAt)}</span>
+                    {policy === "open" && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-6 px-2 text-[11px]"
+                        disabled={busy !== null}
+                        onClick={() => handleSetPairing(ch.id)}
+                      >
+                        <KeyRound className="h-3 w-3 mr-1" />
+                        Set Pairing
+                      </Button>
+                    )}
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  <Button
-                    size="sm"
-                    className="h-7 text-xs bg-emerald-600 hover:bg-emerald-700"
-                    disabled={busy !== null}
-                    onClick={() =>
-                      runAction(
-                        `Approve ${req.code}`,
-                        "device.pair.approve",
-                        { code: req.code },
-                        () => mutatePairing(),
-                      )
-                    }
-                  >
-                    {busy === `Approve ${req.code}` ? (
-                      <Loader2 className="h-3 w-3 animate-spin mr-1" />
-                    ) : (
-                      <UserCheck className="h-3 w-3 mr-1" />
-                    )}
-                    Approve
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-7 text-xs text-destructive hover:bg-destructive/10"
-                    disabled={busy !== null}
-                    onClick={() =>
-                      runAction(
-                        `Reject ${req.code}`,
-                        "device.pair.reject",
-                        { code: req.code },
-                        () => mutatePairing(),
-                      )
-                    }
-                  >
-                    {busy === `Reject ${req.code}` ? (
-                      <Loader2 className="h-3 w-3 animate-spin mr-1" />
-                    ) : (
-                      <UserX className="h-3 w-3 mr-1" />
-                    )}
-                    Reject
-                  </Button>
-                </div>
+                {/* Allowlist */}
+                {allowFrom.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    {allowFrom.map((userId) => (
+                      <span
+                        key={userId}
+                        className="inline-flex items-center gap-1 text-[11px] font-mono bg-muted/30 px-2 py-0.5 rounded border border-border/50"
+                      >
+                        {userId}
+                        <button
+                          className="text-muted-foreground hover:text-destructive ml-0.5"
+                          onClick={() => handleRemoveUser(ch.id, userId)}
+                          disabled={busy !== null}
+                        >
+                          &times;
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {!isConfigured && (
+                  <p className="text-[11px] text-muted-foreground/50">Not configured</p>
+                )}
               </div>
-            ))}
-          </div>
-        )}
+            );
+          })}
+        </div>
       </section>
     </div>
   );
