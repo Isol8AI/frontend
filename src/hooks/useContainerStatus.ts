@@ -13,7 +13,15 @@ interface ContainerStatus {
   region: string;
 }
 
-export function useContainerStatus() {
+interface UseContainerStatusOptions {
+  /** Polling interval in ms. 0 = no polling. Default: 0 */
+  refreshInterval?: number;
+  /** Whether to actively fetch. Default: true */
+  enabled?: boolean;
+}
+
+export function useContainerStatus(options: UseContainerStatusOptions = {}) {
+  const { refreshInterval = 0, enabled = true } = options;
   const { getToken, isSignedIn } = useAuth();
 
   const fetcher = useCallback(
@@ -33,11 +41,12 @@ export function useContainerStatus() {
   );
 
   const { data, error, isLoading, mutate } = useSWR<ContainerStatus | null>(
-    isSignedIn ? "/container/status" : null,
+    isSignedIn && enabled ? "/container/status" : null,
     fetcher,
     {
       revalidateOnFocus: false,
-      dedupingInterval: 30000,
+      dedupingInterval: Math.min(refreshInterval || 30000, 30000),
+      refreshInterval: refreshInterval || 0,
     },
   );
 
