@@ -98,6 +98,26 @@ interface SessionsListResponse {
 // Helpers
 // =============================================================================
 
+const TOOL_MODEL_IDS = ["perplexity_search", "elevenlabs_tts", "openai_tts", "firecrawl_scrape"];
+
+const TOOL_DISPLAY_NAMES: Record<string, string> = {
+  perplexity_search: "Web Search",
+  elevenlabs_tts: "Text-to-Speech",
+  openai_tts: "Text-to-Speech (OpenAI)",
+  firecrawl_scrape: "Web Scrape",
+};
+
+function isToolUsage(modelId: string): boolean {
+  return TOOL_MODEL_IDS.some((t) => modelId.includes(t));
+}
+
+function toolDisplayName(modelId: string): string {
+  for (const [key, name] of Object.entries(TOOL_DISPLAY_NAMES)) {
+    if (modelId.includes(key)) return name;
+  }
+  return modelId;
+}
+
 function shortModelName(model: string): string {
   // Strip provider prefix
   const stripped = model.replace(/^amazon-bedrock\//, "");
@@ -220,6 +240,27 @@ export function UsagePanel() {
     };
   }, [sessionsData]);
 
+  // --- Categorize REST API by_model into LLM vs Tool ---
+  const { llmModels, toolModels, totalToolCost } = useMemo(() => {
+    const models = usage?.by_model ?? [];
+    const llm: ModelUsage[] = [];
+    const tools: ModelUsage[] = [];
+    let toolCost = 0;
+    for (const entry of models) {
+      if (isToolUsage(entry.model)) {
+        tools.push(entry);
+        toolCost += entry.cost;
+      } else {
+        llm.push(entry);
+      }
+    }
+    return {
+      llmModels: llm.sort((a, b) => b.cost - a.cost),
+      toolModels: tools.sort((a, b) => b.cost - a.cost),
+      totalToolCost: toolCost,
+    };
+  }, [usage]);
+
   // --- Derived values ---
   const period = account?.current_period;
 
@@ -323,6 +364,12 @@ export function UsagePanel() {
             <span className="text-muted-foreground">LLM Cost (raw)</span>
             <span className="font-mono">{formatDollars(effectiveRawCost, 4)}</span>
           </div>
+          {totalToolCost > 0 && (
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Tool Usage</span>
+              <span className="font-mono">{formatDollars(totalToolCost, 4)}</span>
+            </div>
+          )}
           <div className="flex items-center justify-between text-sm">
             <span className="text-muted-foreground">Platform Fee (40%)</span>
             <span className="font-mono">{formatDollars(effectiveRevenue, 4)}</span>
@@ -424,6 +471,41 @@ export function UsagePanel() {
                   </td>
                   <td className="px-4 py-2 text-right font-mono">
                     {formatDollars(stats.cost * MARKUP, 4)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Tool Usage table (from REST API) */}
+      {toolModels.length > 0 && (
+        <div className="rounded-lg border border-border overflow-hidden">
+          <div className="px-4 py-2 bg-muted/20 border-b border-border">
+            <h3 className="text-sm font-medium">Tool Usage</h3>
+          </div>
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b border-border text-muted-foreground">
+                <th className="text-left px-4 py-2 font-medium">Tool</th>
+                <th className="text-right px-4 py-2 font-medium">Requests</th>
+                <th className="text-right px-4 py-2 font-medium">Cost</th>
+              </tr>
+            </thead>
+            <tbody>
+              {toolModels.map((entry) => (
+                <tr key={entry.model} className="border-b border-border/50 hover:bg-accent/30">
+                  <td className="px-4 py-2">{toolDisplayName(entry.model)}</td>
+                  <td className="px-4 py-2 text-right text-muted-foreground">
+                    {entry.requests}
+                  </td>
+                  <td className="px-4 py-2 text-right font-mono">
+                    {entry.cost === 0 ? (
+                      <span className="text-muted-foreground/60">$0.00 (BYOK)</span>
+                    ) : (
+                      formatDollars(entry.cost, 4)
+                    )}
                   </td>
                 </tr>
               ))}
