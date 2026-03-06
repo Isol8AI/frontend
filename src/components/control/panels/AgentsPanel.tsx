@@ -7,7 +7,7 @@ import {
   Bot,
   FileText,
   Wrench,
-  Sparkles,
+
   User,
   Save,
   AlertCircle,
@@ -18,9 +18,7 @@ import {
 import { useGatewayRpc, useGatewayRpcMutation } from "@/hooks/useGatewayRpc";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { SkillsPanel } from "./SkillsPanel";
-
-type AgentTab = "overview" | "files" | "tools" | "skills";
+type AgentTab = "overview" | "files" | "tools";
 
 interface AgentIdentity {
   name?: string;
@@ -229,7 +227,7 @@ export function AgentsPanel() {
     { id: "overview", label: "Overview", icon: User },
     { id: "files", label: "Files", icon: FileText },
     { id: "tools", label: "Tools", icon: Wrench },
-    { id: "skills", label: "Skills", icon: Sparkles },
+
   ];
 
   return (
@@ -308,9 +306,6 @@ function AgentTabContent({ agentId, agent, tab, onAgentUpdated }: { agentId: str
   }
   if (tab === "tools") {
     return <AgentToolsTab agentId={agentId} />;
-  }
-  if (tab === "skills") {
-    return <SkillsPanel agentId={agentId} />;
   }
   return null;
 }
