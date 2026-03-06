@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Link2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -13,11 +13,9 @@ interface ChannelOnboardingCardProps {
 export function ChannelOnboardingCard({
   onSetUpChannels,
 }: ChannelOnboardingCardProps): React.ReactElement | null {
-  const [dismissed, setDismissed] = useState(true);
-
-  useEffect(() => {
-    setDismissed(localStorage.getItem(DISMISS_KEY) === "true");
-  }, []);
+  const [dismissed, setDismissed] = useState(
+    () => typeof window !== "undefined" && localStorage.getItem(DISMISS_KEY) === "true",
+  );
 
   if (dismissed) return null;
 
