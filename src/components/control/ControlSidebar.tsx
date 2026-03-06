@@ -3,6 +3,7 @@
 import {
   LayoutDashboard,
   Bot,
+  Sparkles,
   MessageSquare,
   Link2,
   Clock,
@@ -21,6 +22,7 @@ interface ControlSidebarProps {
 const NAV_ITEMS = [
   { key: "overview", label: "Overview", icon: LayoutDashboard },
   { key: "agents", label: "Agents", icon: Bot },
+  { key: "skills", label: "Skills", icon: Sparkles },
   { key: "sessions", label: "Sessions", icon: MessageSquare },
   { key: "channels", label: "Channels", icon: Link2 },
   { key: "cron", label: "Cron Jobs", icon: Clock },
