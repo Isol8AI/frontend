@@ -1,17 +1,24 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState } from "react";
 import {
   Loader2,
   RefreshCw,
-  Search,
+  ExternalLink,
   Download,
-  ArrowUpCircle,
-  Trash2,
+  ToggleLeft,
+  ToggleRight,
 } from "lucide-react";
 import { useGatewayRpc, useGatewayRpcMutation } from "@/hooks/useGatewayRpc";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+
+interface SkillInstallSpec {
+  id?: string;
+  kind: string;
+  package?: string;
+  bins?: string[];
+}
 
 interface SkillStatusEntry {
   name: string;
@@ -19,19 +26,14 @@ interface SkillStatusEntry {
   source: string;
   skillKey: string;
   emoji?: string;
+  enabled?: boolean;
+  installed?: boolean;
+  install?: SkillInstallSpec[];
   [key: string]: unknown;
 }
 
 interface SkillStatusReport {
   skills: SkillStatusEntry[];
-}
-
-interface ExecResult {
-  stdout?: string;
-  stderr?: string;
-  exitCode?: number;
-  output?: string;
-  [key: string]: unknown;
 }
 
 export function ClawHubTab({ agentId: _agentId }: { agentId?: string }) {
@@ -41,85 +43,75 @@ export function ClawHubTab({ agentId: _agentId }: { agentId?: string }) {
     {},
   );
 
-  const [searchQuery, setSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<string | null>(null);
-  const [searchLoading, setSearchLoading] = useState(false);
+  const [installSlug, setInstallSlug] = useState("");
   const [installLoading, setInstallLoading] = useState<string | null>(null);
-  const [updateLoading, setUpdateLoading] = useState<string | null>(null);
-  const [removeLoading, setRemoveLoading] = useState<string | null>(null);
+  const [toggleLoading, setToggleLoading] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  // Filter installed ClawHub skills from skills.status
   const allSkills: SkillStatusEntry[] = Array.isArray(raw) ? raw : raw?.skills ?? [];
-  const installedFromClawHub = allSkills.filter((s) => s.source === "openclaw-managed");
 
-  const extractOutput = (result: unknown): string => {
-    if (typeof result === "string") return result;
-    const r = result as ExecResult;
-    return r.stdout || r.output || r.stderr || JSON.stringify(result, null, 2);
-  };
-
-  const handleSearch = useCallback(async () => {
-    if (!searchQuery.trim()) return;
-    setSearchLoading(true);
-    setSearchResults(null);
-    try {
-      const result = await callRpc("exec.run", {
-        command: "clawhub",
-        args: ["search", searchQuery.trim(), "--limit", "10", "--no-input"],
-      });
-      setSearchResults(extractOutput(result));
-    } catch (err) {
-      console.error("ClawHub search failed:", err);
-      setSearchResults(
-        err instanceof Error ? `Search failed: ${err.message}` : "Search failed"
-      );
-    } finally {
-      setSearchLoading(false);
+  const handleInstallDeps = async (skill: SkillStatusEntry) => {
+    const specs = skill.install ?? [];
+    // Find a node-kind install spec (works in containers without brew)
+    const nodeSpec = specs.find((s) => s.kind === "node");
+    if (!nodeSpec) {
+      setError(`No compatible installer for "${skill.name}" (only node packages supported in containers)`);
+      return;
     }
-  }, [searchQuery, callRpc]);
-
-  const handleInstall = async (slug: string) => {
-    setInstallLoading(slug);
+    const installId = nodeSpec.id ?? "node";
+    setInstallLoading(skill.skillKey);
+    setError(null);
     try {
-      await callRpc("exec.run", {
-        command: "clawhub",
-        args: ["install", slug, "--no-input"],
+      await callRpc("skills.install", {
+        name: skill.name,
+        installId,
+        timeoutMs: 120000,
       });
       mutateSkills();
     } catch (err) {
-      console.error("ClawHub install failed:", err);
+      console.error("Skill install failed:", err);
+      setError(err instanceof Error ? err.message : "Install failed");
     } finally {
       setInstallLoading(null);
     }
   };
 
-  const handleUpdate = async (slug: string) => {
-    setUpdateLoading(slug);
+  const handleToggle = async (skill: SkillStatusEntry) => {
+    setToggleLoading(skill.skillKey);
+    setError(null);
     try {
-      await callRpc("exec.run", {
-        command: "clawhub",
-        args: ["update", slug, "--no-input"],
+      await callRpc("skills.update", {
+        skillKey: skill.skillKey,
+        enabled: !skill.enabled,
       });
       mutateSkills();
     } catch (err) {
-      console.error("ClawHub update failed:", err);
+      console.error("Skill toggle failed:", err);
+      setError(err instanceof Error ? err.message : "Toggle failed");
     } finally {
-      setUpdateLoading(null);
+      setToggleLoading(null);
     }
   };
 
-  const handleRemove = async (slug: string) => {
-    setRemoveLoading(slug);
+  const handleInstallBySlug = async () => {
+    const slug = installSlug.trim();
+    if (!slug) return;
+    setInstallLoading(slug);
+    setError(null);
     try {
-      await callRpc("exec.run", {
-        command: "rm",
-        args: ["-rf", `skills/${slug}`],
+      // Use skills.install with "node" kind — the slug is the npm package name
+      await callRpc("skills.install", {
+        name: slug,
+        installId: "node",
+        timeoutMs: 120000,
       });
+      setInstallSlug("");
       mutateSkills();
     } catch (err) {
-      console.error("ClawHub remove failed:", err);
+      console.error("Skill install failed:", err);
+      setError(err instanceof Error ? err.message : "Install failed");
     } finally {
-      setRemoveLoading(null);
+      setInstallLoading(null);
     }
   };
 
@@ -128,72 +120,80 @@ export function ClawHubTab({ agentId: _agentId }: { agentId?: string }) {
       {/* Header */}
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold">ClawHub</h2>
-        <Button variant="ghost" size="sm" onClick={() => mutateSkills()}>
-          <RefreshCw className="h-3.5 w-3.5" />
-        </Button>
-      </div>
-
-      {/* Search */}
-      <div className="space-y-2">
-        <div className="flex gap-2">
-          <div className="relative flex-1">
-            <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
-            <Input
-              placeholder="Search skills on ClawHub..."
-              className="pl-8 h-8 text-sm"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handleSearch();
-              }}
-            />
-          </div>
+        <div className="flex items-center gap-1">
+          <Button variant="ghost" size="sm" onClick={() => mutateSkills()}>
+            <RefreshCw className="h-3.5 w-3.5" />
+          </Button>
           <Button
+            variant="ghost"
             size="sm"
-            className="text-xs"
-            onClick={handleSearch}
-            disabled={searchLoading || !searchQuery.trim()}
+            className="gap-1.5 text-xs"
+            onClick={() => window.open("https://clawhub.ai", "_blank")}
           >
-            {searchLoading ? (
-              <Loader2 className="h-3 w-3 animate-spin" />
-            ) : (
-              "Search"
-            )}
+            <ExternalLink className="h-3.5 w-3.5" />
+            Browse ClawHub
           </Button>
         </div>
-
-        {/* Search results */}
-        {searchResults !== null && (
-          <div className="space-y-2">
-            <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              Search Results
-            </h3>
-            <div className="rounded-lg border border-border bg-card/30 p-3">
-              <pre className="text-xs font-mono whitespace-pre-wrap break-words text-foreground/80">
-                {searchResults}
-              </pre>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              To install a skill, type the slug below:
-            </p>
-            <InstallBySlug onInstall={handleInstall} loading={installLoading} />
-          </div>
-        )}
       </div>
 
-      {/* Installed from ClawHub */}
+      <p className="text-xs text-muted-foreground">
+        Browse skills on{" "}
+        <a href="https://clawhub.ai" target="_blank" rel="noopener noreferrer" className="underline">
+          clawhub.ai
+        </a>
+        , then install by entering the package name below.
+      </p>
+
+      {/* Install by package name */}
       <div className="space-y-2">
         <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-          Installed from ClawHub ({installedFromClawHub.length})
+          Install a Skill
+        </h3>
+        <div className="flex gap-2">
+          <Input
+            placeholder="npm-package-name"
+            className="h-8 text-xs font-mono"
+            value={installSlug}
+            onChange={(e) => setInstallSlug(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") handleInstallBySlug();
+            }}
+          />
+          <Button
+            size="sm"
+            className="text-xs gap-1.5"
+            onClick={handleInstallBySlug}
+            disabled={installLoading !== null || !installSlug.trim()}
+          >
+            {installLoading === installSlug.trim() ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <Download className="h-3 w-3" />
+            )}
+            Install
+          </Button>
+        </div>
+      </div>
+
+      {error && (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3">
+          <p className="text-xs text-destructive">{error}</p>
+        </div>
+      )}
+
+      {/* Installed skills */}
+      <div className="space-y-2">
+        <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+          Available Skills ({allSkills.length})
         </h3>
 
-        {installedFromClawHub.length === 0 && (
+        {allSkills.length === 0 && (
           <p className="text-xs text-muted-foreground">
-            No skills installed from ClawHub yet.
+            No skills found. Browse ClawHub to discover skills.
           </p>
         )}
 
-        {installedFromClawHub.map((skill) => (
+        {allSkills.map((skill) => (
           <div
             key={skill.skillKey || skill.name}
             className="rounded-lg border border-border p-4 space-y-2 bg-card/30"
@@ -205,6 +205,9 @@ export function ClawHubTab({ agentId: _agentId }: { agentId?: string }) {
                     <span className="text-base flex-shrink-0">{skill.emoji}</span>
                   )}
                   <h4 className="text-sm font-medium truncate">{skill.name}</h4>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+                    {skill.source}
+                  </span>
                 </div>
                 {skill.description && (
                   <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
@@ -213,32 +216,38 @@ export function ClawHubTab({ agentId: _agentId }: { agentId?: string }) {
                 )}
               </div>
               <div className="flex items-center gap-1">
+                {/* Install deps button (only if skill has install specs) */}
+                {skill.install && skill.install.length > 0 && !skill.installed && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2 text-xs gap-1"
+                    onClick={() => handleInstallDeps(skill)}
+                    disabled={installLoading !== null}
+                    title="Install dependencies"
+                  >
+                    {installLoading === skill.skillKey ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <Download className="h-3 w-3" />
+                    )}
+                  </Button>
+                )}
+                {/* Toggle enable/disable */}
                 <Button
                   variant="ghost"
                   size="sm"
                   className="h-7 px-2 text-xs gap-1"
-                  onClick={() => handleUpdate(skill.name)}
-                  disabled={updateLoading !== null}
-                  title="Update"
+                  onClick={() => handleToggle(skill)}
+                  disabled={toggleLoading !== null}
+                  title={skill.enabled ? "Disable" : "Enable"}
                 >
-                  {updateLoading === skill.name ? (
+                  {toggleLoading === skill.skillKey ? (
                     <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : skill.enabled ? (
+                    <ToggleRight className="h-4 w-4 text-green-500" />
                   ) : (
-                    <ArrowUpCircle className="h-3 w-3" />
-                  )}
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 px-2 text-xs gap-1 text-destructive hover:text-destructive"
-                  onClick={() => handleRemove(skill.name)}
-                  disabled={removeLoading !== null}
-                  title="Remove"
-                >
-                  {removeLoading === skill.name ? (
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                  ) : (
-                    <Trash2 className="h-3 w-3" />
+                    <ToggleLeft className="h-4 w-4 text-muted-foreground" />
                   )}
                 </Button>
               </div>
@@ -246,47 +255,6 @@ export function ClawHubTab({ agentId: _agentId }: { agentId?: string }) {
           </div>
         ))}
       </div>
-    </div>
-  );
-}
-
-// --- Install by slug mini-form ---
-
-function InstallBySlug({
-  onInstall,
-  loading,
-}: {
-  onInstall: (slug: string) => void;
-  loading: string | null;
-}) {
-  const [slug, setSlug] = useState("");
-
-  return (
-    <div className="flex gap-2">
-      <Input
-        placeholder="skill-slug"
-        className="h-8 text-xs font-mono"
-        value={slug}
-        onChange={(e) => setSlug(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && slug.trim()) onInstall(slug.trim());
-        }}
-      />
-      <Button
-        size="sm"
-        className="text-xs gap-1.5"
-        onClick={() => {
-          if (slug.trim()) onInstall(slug.trim());
-        }}
-        disabled={loading !== null || !slug.trim()}
-      >
-        {loading ? (
-          <Loader2 className="h-3 w-3 animate-spin" />
-        ) : (
-          <Download className="h-3 w-3" />
-        )}
-        Install
-      </Button>
     </div>
   );
 }
