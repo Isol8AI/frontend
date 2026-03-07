@@ -15,7 +15,7 @@ describe('ChatInput', () => {
   }
 
   function getSendButton(): HTMLElement {
-    return screen.getByRole('button');
+    return screen.getByTestId('send-button');
   }
 
   describe('rendering', () => {
@@ -45,7 +45,7 @@ describe('ChatInput', () => {
       await user.type(getTextarea(), 'Hello world');
       await user.click(getSendButton());
 
-      expect(mockOnSend).toHaveBeenCalledWith('Hello world');
+      expect(mockOnSend).toHaveBeenCalledWith('Hello world', undefined);
     });
 
     it('clears input after send', async () => {
@@ -66,7 +66,7 @@ describe('ChatInput', () => {
       await user.type(getTextarea(), 'Enter test');
       await user.keyboard('{Enter}');
 
-      expect(mockOnSend).toHaveBeenCalledWith('Enter test');
+      expect(mockOnSend).toHaveBeenCalledWith('Enter test', undefined);
     });
 
     it('does not send on Shift+Enter', async () => {

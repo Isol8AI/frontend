@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { ChatInput } from "./ChatInput";
 import { ConnectionStatusBar } from "./ConnectionStatusBar";
 import { MessageList } from "./MessageList";
 import { useAgentChat } from "@/hooks/useAgentChat";
+import { useApi } from "@/lib/api";
 
 import type { ToolUse } from "@/hooks/useAgentChat";
 
@@ -33,6 +34,9 @@ export function AgentChatWindow({
     clearMessages,
   } = useAgentChat(agentId);
 
+  const api = useApi();
+  const [isUploading, setIsUploading] = useState(false);
+
   const isInitialState = chatMessages.length === 0;
   const isTyping = isStreaming;
 
@@ -49,14 +53,37 @@ export function AgentChatWindow({
   }, [agentId, clearMessages]);
 
   const handleSend = useCallback(
-    async (content: string): Promise<void> => {
+    async (content: string, files?: File[]): Promise<void> => {
       try {
-        await sendMessage(content);
+        let message = content;
+
+        if (files && files.length > 0) {
+          setIsUploading(true);
+          try {
+            const result = await api.uploadFiles(files);
+            const fileList = result.uploaded
+              .map((f) => `- ${f.filename} (${f.path})`)
+              .join("\n");
+            const fileNotice = `[Uploaded files to workspace:\n${fileList}]\n\n`;
+            message = fileNotice + message;
+          } catch (err) {
+            console.error("Upload failed:", err);
+            const errorMsg = err instanceof Error ? err.message : "Upload failed";
+            // Still send the text message but note the upload failure
+            message = `[File upload failed: ${errorMsg}]\n\n` + message;
+          } finally {
+            setIsUploading(false);
+          }
+        }
+
+        if (message.trim()) {
+          await sendMessage(message);
+        }
       } catch (err) {
         console.error("Failed to send message:", err);
       }
     },
-    [sendMessage],
+    [sendMessage, api],
   );
 
   const messages: Message[] = useMemo(
@@ -82,7 +109,7 @@ export function AgentChatWindow({
             <p className="font-medium">Error</p>
             <p className="text-sm">{chatError}</p>
           </div>
-          <ChatInput onSend={handleSend} disabled={isTyping} />
+          <ChatInput onSend={handleSend} disabled={isTyping} isUploading={isUploading} />
         </div>
       </div>
     );
@@ -102,7 +129,7 @@ export function AgentChatWindow({
             </p>
           </div>
           <div className="w-full max-w-2xl">
-            <ChatInput onSend={handleSend} disabled={isTyping || !agentId} centered />
+            <ChatInput onSend={handleSend} disabled={isTyping || !agentId} centered isUploading={isUploading} />
           </div>
         </div>
       </div>
@@ -113,7 +140,7 @@ export function AgentChatWindow({
     <div className="flex flex-col h-full min-h-0 bg-background/20">
       <ConnectionStatusBar />
       <MessageList messages={messages} isTyping={isTyping} />
-      <ChatInput onSend={handleSend} disabled={isTyping} />
+      <ChatInput onSend={handleSend} disabled={isTyping} isUploading={isUploading} />
     </div>
   );
 }
