@@ -24,7 +24,7 @@ const STEPS: { phase: Phase; label: string; activeLabel: string }[] = [
   { phase: "ready", label: "Ready", activeLabel: "Ready!" },
 ];
 
-const TIMEOUT_MS = 120_000;
+const TIMEOUT_MS = 180_000;
 
 export function ProvisioningStepper({
   children,
@@ -60,6 +60,11 @@ export function ProvisioningStepper({
     if (containerReady) return "gateway";
     return "container";
   }, [isSubscribed, container, containerReady, gatewayHealth]);
+
+  // Clear timeout when ready
+  useEffect(() => {
+    if (phase === "ready") setTimedOut(false);
+  }, [phase]);
 
   // Timeout check (only while not ready)
   useEffect(() => {
@@ -125,32 +130,6 @@ export function ProvisioningStepper({
     );
   }
 
-  // Timeout state
-  if (timedOut) {
-    return (
-      <div className="flex-1 flex items-center justify-center">
-        <div className="text-center space-y-6 max-w-sm">
-          <StepperDisplay currentPhase={phase} />
-          <div className="space-y-2">
-            <AlertTriangle className="h-8 w-8 text-yellow-500 mx-auto" />
-            <h2 className="text-lg font-medium">Taking longer than expected</h2>
-            <p className="text-sm text-muted-foreground">
-              Your container is still being set up. This can occasionally take a few minutes.
-            </p>
-          </div>
-          <div className="flex gap-3 justify-center">
-            <Button variant="outline" onClick={() => window.location.reload()}>
-              Refresh
-            </Button>
-            <Button variant="ghost" asChild>
-              <a href="mailto:support@isol8.co">Contact Support</a>
-            </Button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   // Provisioning stepper — always shown during container/gateway phases
   return (
     <div className="flex-1 flex items-center justify-center">
@@ -162,6 +141,22 @@ export function ProvisioningStepper({
           </p>
         </div>
         <StepperDisplay currentPhase={phase} />
+        {timedOut && (
+          <div className="space-y-4 pt-2">
+            <div className="flex items-center justify-center gap-2 text-yellow-500">
+              <AlertTriangle className="h-4 w-4" />
+              <p className="text-sm">Taking longer than expected</p>
+            </div>
+            <div className="flex gap-3 justify-center">
+              <Button variant="outline" size="sm" onClick={() => window.location.reload()}>
+                Refresh
+              </Button>
+              <Button variant="ghost" size="sm" asChild>
+                <a href="mailto:support@isol8.co">Contact Support</a>
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
