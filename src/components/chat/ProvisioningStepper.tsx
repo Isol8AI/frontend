@@ -14,13 +14,15 @@ import { Button } from "@/components/ui/button";
 import { useBilling } from "@/hooks/useBilling";
 import { useContainerStatus } from "@/hooks/useContainerStatus";
 import { useGatewayRpc } from "@/hooks/useGatewayRpc";
+import { ChannelSetupStep } from "./ChannelSetupStep";
 
-type Phase = "payment" | "container" | "gateway" | "ready";
+type Phase = "payment" | "container" | "gateway" | "channels" | "ready";
 
 const STEPS: { phase: Phase; label: string; activeLabel: string }[] = [
   { phase: "payment", label: "Payment confirmed", activeLabel: "Confirming payment..." },
   { phase: "container", label: "Container started", activeLabel: "Starting your container..." },
   { phase: "gateway", label: "Gateway connected", activeLabel: "Connecting to AI gateway..." },
+  { phase: "channels", label: "Channels configured", activeLabel: "Connect your channels" },
   { phase: "ready", label: "Ready", activeLabel: "Ready!" },
 ];
 
@@ -35,6 +37,7 @@ export function ProvisioningStepper({
   const [startTime] = useState(() => Date.now());
   const [timedOut, setTimedOut] = useState(false);
   const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
+  const [channelsComplete, setChannelsComplete] = useState(false);
 
   // Poll container status every 3s once subscribed
   const { container, refresh: refreshContainer } = useContainerStatus({
@@ -56,10 +59,11 @@ export function ProvisioningStepper({
     if (!isSubscribed) return "payment";
     if (!container || (container.status === "provisioning" && !containerReady)) return "container";
     if (container.status === "error") return "container";
-    if (containerReady && gatewayHealth) return "ready";
+    if (containerReady && gatewayHealth && channelsComplete) return "ready";
+    if (containerReady && gatewayHealth) return "channels";
     if (containerReady) return "gateway";
     return "container";
-  }, [isSubscribed, container, containerReady, gatewayHealth]);
+  }, [isSubscribed, container, containerReady, gatewayHealth, channelsComplete]);
 
   // Timeout check (only while not ready; resets when phase changes)
   useEffect(() => {
@@ -74,6 +78,20 @@ export function ProvisioningStepper({
     }, 5000);
     return () => clearInterval(interval);
   }, [phase, startTime]);
+
+  // Channels setup step
+  if (phase === "channels") {
+    return (
+      <div className="flex-1 flex items-center justify-center p-8">
+        <div className="w-full max-w-lg space-y-6">
+          <div className="text-center space-y-2">
+            <StepperDisplay currentPhase={phase} />
+          </div>
+          <ChannelSetupStep onComplete={() => setChannelsComplete(true)} />
+        </div>
+      </div>
+    );
+  }
 
   // Ready — render children
   if (phase === "ready") {
