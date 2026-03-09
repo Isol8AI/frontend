@@ -58,6 +58,11 @@ const CHANNELS: ChannelDef[] = [
     ],
   },
   {
+    id: "whatsapp",
+    label: "WhatsApp",
+    fields: [], // WhatsApp uses QR pairing, no credential fields
+  },
+  {
     id: "discord",
     label: "Discord",
     fields: [
@@ -69,11 +74,6 @@ const CHANNELS: ChannelDef[] = [
         help: "From Discord Developer Portal \u2192 Bot \u2192 Token",
       },
     ],
-  },
-  {
-    id: "whatsapp",
-    label: "WhatsApp",
-    fields: [], // WhatsApp uses QR pairing, no credential fields
   },
 ];
 
