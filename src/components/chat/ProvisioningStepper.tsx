@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
 import {
   Loader2,
   Zap,
@@ -32,53 +31,27 @@ export function ProvisioningStepper({
 }: {
   children: React.ReactNode;
 }) {
-  const searchParams = useSearchParams();
-  const { isLoading: billingLoading, isSubscribed, createCheckout, refresh: refreshBilling } = useBilling();
-  const justSubscribed = searchParams.get("subscription") === "success";
-
+  const { isLoading: billingLoading, isSubscribed, createCheckout } = useBilling();
   const [startTime] = useState(() => Date.now());
   const [timedOut, setTimedOut] = useState(false);
   const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
-  const urlCleanedRef = useRef(false);
-
-  // Track whether this is a fresh provisioning flow (just paid) vs returning user
-  const isNewProvisioning = justSubscribed;
-
-  // Poll billing every 2s until subscribed (only after Stripe redirect)
-  const shouldPollBilling = justSubscribed && !isSubscribed && !billingLoading;
-  useEffect(() => {
-    if (!shouldPollBilling) return;
-    const interval = setInterval(() => refreshBilling(), 2000);
-    return () => clearInterval(interval);
-  }, [shouldPollBilling, refreshBilling]);
-
-  // Clean URL param once subscription confirmed
-  useEffect(() => {
-    if (isSubscribed && justSubscribed && !urlCleanedRef.current) {
-      urlCleanedRef.current = true;
-      window.history.replaceState({}, "", "/chat");
-    }
-  }, [isSubscribed, justSubscribed]);
 
   // Poll container status every 3s once subscribed
-  const shouldPollContainer = isSubscribed;
   const { container, refresh: refreshContainer } = useContainerStatus({
-    refreshInterval: shouldPollContainer ? 3000 : 0,
-    enabled: shouldPollContainer,
+    refreshInterval: isSubscribed ? 3000 : 0,
+    enabled: isSubscribed,
   });
 
-  // Derive phase from state (no setState in effects)
   const containerReady = container?.status === "running" || container?.substatus === "gateway_healthy";
 
   // Poll gateway health every 3s once container looks ready
-  const shouldPollGateway = isSubscribed && containerReady;
   const { data: gatewayHealth } = useGatewayRpc<Record<string, unknown>>(
-    shouldPollGateway ? "health" : null,
+    isSubscribed && containerReady ? "health" : null,
     undefined,
     { refreshInterval: 3000, dedupingInterval: 2000 },
   );
 
-  // Derive phase purely from data — no effects needed
+  // Derive phase purely from data
   const phase: Phase = useMemo(() => {
     if (!isSubscribed) return "payment";
     if (!container || (container.status === "provisioning" && !containerReady)) return "container";
@@ -88,16 +61,16 @@ export function ProvisioningStepper({
     return "container";
   }, [isSubscribed, container, containerReady, gatewayHealth]);
 
-  // Timeout check (only during active provisioning)
+  // Timeout check (only while not ready)
   useEffect(() => {
-    if (phase === "ready" || !isNewProvisioning) return;
+    if (phase === "ready" || phase === "payment") return;
     const interval = setInterval(() => {
       if (Date.now() - startTime > TIMEOUT_MS) {
         setTimedOut(true);
       }
     }, 5000);
     return () => clearInterval(interval);
-  }, [phase, startTime, isNewProvisioning]);
+  }, [phase, startTime]);
 
   // Ready — render children
   if (phase === "ready") {
@@ -113,8 +86,8 @@ export function ProvisioningStepper({
     );
   }
 
-  // Not subscribed and not just returning from checkout
-  if (!isSubscribed && !justSubscribed) {
+  // Not subscribed — show pricing
+  if (!isSubscribed) {
     return <PricingCards checkoutLoading={checkoutLoading} onCheckout={async (tier) => {
       setCheckoutLoading(tier);
       try {
@@ -126,28 +99,21 @@ export function ProvisioningStepper({
     }} />;
   }
 
-  // Error state (show stepper for new users, simple message for returning)
+  // Error state
   if (container?.status === "error") {
     return (
       <div className="flex-1 flex items-center justify-center">
         <div className="text-center space-y-6 max-w-sm">
-          {isNewProvisioning && <StepperDisplay currentPhase={phase} error />}
+          <StepperDisplay currentPhase={phase} error />
           <div className="space-y-2">
             <XCircle className="h-8 w-8 text-red-500 mx-auto" />
-            <h2 className="text-lg font-medium">
-              {isNewProvisioning ? "Setup failed" : "Connection error"}
-            </h2>
+            <h2 className="text-lg font-medium">Setup failed</h2>
             <p className="text-sm text-muted-foreground">
-              {isNewProvisioning
-                ? "Something went wrong while setting up your container. This is usually temporary."
-                : "Your container encountered an error. This is usually temporary."}
+              Something went wrong while setting up your container. This is usually temporary.
             </p>
           </div>
           <div className="flex gap-3 justify-center">
-            <Button variant="outline" onClick={() => {
-              refreshContainer();
-              refreshBilling();
-            }}>
+            <Button variant="outline" onClick={() => refreshContainer()}>
               Retry
             </Button>
             <Button variant="ghost" asChild>
@@ -159,8 +125,8 @@ export function ProvisioningStepper({
     );
   }
 
-  // Timeout state (only for new provisioning)
-  if (timedOut && isNewProvisioning) {
+  // Timeout state
+  if (timedOut) {
     return (
       <div className="flex-1 flex items-center justify-center">
         <div className="text-center space-y-6 max-w-sm">
@@ -185,19 +151,7 @@ export function ProvisioningStepper({
     );
   }
 
-  // --- Returning user: simple loading spinner ---
-  if (!isNewProvisioning) {
-    return (
-      <div className="flex-1 flex items-center justify-center">
-        <div className="text-center space-y-4">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground mx-auto" />
-          <p className="text-sm text-muted-foreground">Connecting to your agent...</p>
-        </div>
-      </div>
-    );
-  }
-
-  // --- New user: provisioning stepper ---
+  // Provisioning stepper — always shown during container/gateway phases
   return (
     <div className="flex-1 flex items-center justify-center">
       <div className="text-center space-y-8 max-w-sm">
