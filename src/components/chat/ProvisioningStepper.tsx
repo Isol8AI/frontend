@@ -61,14 +61,12 @@ export function ProvisioningStepper({
     return "container";
   }, [isSubscribed, container, containerReady, gatewayHealth]);
 
-  // Clear timeout when ready
+  // Timeout check (only while not ready; resets when phase changes)
   useEffect(() => {
-    if (phase === "ready") setTimedOut(false);
-  }, [phase]);
-
-  // Timeout check (only while not ready)
-  useEffect(() => {
-    if (phase === "ready" || phase === "payment") return;
+    if (phase === "ready" || phase === "payment") {
+      setTimedOut(false);
+      return;
+    }
     const interval = setInterval(() => {
       if (Date.now() - startTime > TIMEOUT_MS) {
         setTimedOut(true);
