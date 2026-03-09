@@ -35,7 +35,7 @@ export function ProvisioningStepper({
 }) {
   const { isLoading: billingLoading, isSubscribed, createCheckout } = useBilling();
   const [startTime] = useState(() => Date.now());
-  const [timedOut, setTimedOut] = useState(false);
+  const [, setTick] = useState(0);
   const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
   const [channelsComplete, setChannelsComplete] = useState(false);
 
@@ -65,19 +65,14 @@ export function ProvisioningStepper({
     return "container";
   }, [isSubscribed, container, containerReady, gatewayHealth, channelsComplete]);
 
-  // Timeout check (only while not ready; resets when phase changes)
+  // Periodic re-render to detect timeout (tick forces re-render, timedOut is derived)
   useEffect(() => {
-    if (phase === "ready" || phase === "payment") {
-      setTimedOut(false);
-      return;
-    }
-    const interval = setInterval(() => {
-      if (Date.now() - startTime > TIMEOUT_MS) {
-        setTimedOut(true);
-      }
-    }, 5000);
+    if (phase === "ready" || phase === "payment") return;
+    const interval = setInterval(() => setTick((t) => t + 1), 5000);
     return () => clearInterval(interval);
-  }, [phase, startTime]);
+  }, [phase]);
+
+  const timedOut = phase !== "ready" && phase !== "payment" && Date.now() - startTime > TIMEOUT_MS;
 
   // Channels setup step
   if (phase === "channels") {
