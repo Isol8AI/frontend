@@ -117,10 +117,7 @@ export function useAgentChat(agentId: string | null): UseAgentChatReturn {
   const historyLoadedRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
-    if (!agentId || !isConnected) {
-      setIsLoadingHistory(false);
-      return;
-    }
+    if (!agentId || !isConnected) return;
     if (historyLoadedRef.current.has(agentId)) return;
     // Don't fetch if we already have cached messages
     if (_messageCache.has(agentId)) {
