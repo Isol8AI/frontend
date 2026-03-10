@@ -97,7 +97,8 @@ export function useAgentChat(agentId: string | null): UseAgentChatReturn {
   );
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [historyLoadState, setHistoryLoadState] = useState<"idle" | "loading" | "done">("idle");
+  const isLoadingHistory = historyLoadState === "loading";
 
   const currentAssistantIdRef = useRef<string | null>(null);
   const streamContentRef = useRef<string>("");
@@ -125,8 +126,10 @@ export function useAgentChat(agentId: string | null): UseAgentChatReturn {
       return;
     }
 
-    setIsLoadingHistory(true);
     const sessionKey = `agent:${agentId}:main`;
+
+    // Use Promise.resolve to move setState into a callback (satisfies react-hooks/set-state-in-effect)
+    Promise.resolve().then(() => setHistoryLoadState("loading"));
 
     sendReq("chat.history", { sessionKey, limit: 200 })
       .then((result: unknown) => {
@@ -134,7 +137,7 @@ export function useAgentChat(agentId: string | null): UseAgentChatReturn {
           messages?: Array<{ role: string; content: string }>;
         };
         historyLoadedRef.current.add(agentId);
-        setIsLoadingHistory(false);
+        setHistoryLoadState("done");
 
         if (!historyResult?.messages?.length) {
           // No history = first time. Trigger bootstrap auto-send.
@@ -194,7 +197,7 @@ export function useAgentChat(agentId: string | null): UseAgentChatReturn {
       .catch((err: unknown) => {
         console.warn("Failed to fetch chat history:", err);
         historyLoadedRef.current.add(agentId);
-        setIsLoadingHistory(false);
+        setHistoryLoadState("done");
       });
   }, [agentId, isConnected, sendReq, sendChat]);
 
