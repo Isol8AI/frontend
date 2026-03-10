@@ -464,8 +464,10 @@ export function ChannelsPanel() {
   const snapshot = data as ChannelsStatusSnapshot | null | undefined;
   const config = (configData as ConfigSnapshot | undefined)?.config ?? {};
 
+  // Always show these three channels, even if the gateway doesn't report them
+  const REQUIRED_CHANNELS = ["telegram", "whatsapp", "discord"];
   const DEFAULT_CHANNELS = [
-    "whatsapp", "telegram", "discord", "googlechat",
+    "telegram", "whatsapp", "discord", "googlechat",
     "slack", "signal", "imessage", "nostr",
   ];
   const DEFAULT_LABELS: Record<string, string> = {
@@ -473,9 +475,14 @@ export function ChannelsPanel() {
     googlechat: "Google Chat", slack: "Slack", signal: "Signal",
     imessage: "iMessage", nostr: "Nostr",
   };
-  const channelOrder = snapshot?.channelOrder?.length
+  const gatewayOrder = snapshot?.channelOrder?.length
     ? snapshot.channelOrder
     : DEFAULT_CHANNELS;
+  // Merge: gateway-reported channels first, then ensure required channels are present
+  const channelOrder = [
+    ...gatewayOrder,
+    ...REQUIRED_CHANNELS.filter((ch) => !gatewayOrder.includes(ch)),
+  ];
   const channelLabels = { ...DEFAULT_LABELS, ...(snapshot?.channelLabels ?? {}) };
   const channelAccounts = snapshot?.channelAccounts ?? {};
   const channelDetailLabels = snapshot?.channelDetailLabels ?? {};
