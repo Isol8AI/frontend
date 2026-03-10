@@ -55,6 +55,13 @@ const CHANNELS: ChannelDef[] = [
         sensitive: true,
         help: "Get from @BotFather on Telegram",
       },
+      {
+        key: "userId",
+        label: "Your Telegram User ID",
+        placeholder: "7895038573",
+        sensitive: false,
+        help: "Send any message to your bot to see your user ID",
+      },
     ],
   },
   {
@@ -72,6 +79,13 @@ const CHANNELS: ChannelDef[] = [
         placeholder: "your-discord-bot-token",
         sensitive: true,
         help: "From Discord Developer Portal \u2192 Bot \u2192 Token",
+      },
+      {
+        key: "userId",
+        label: "Your Discord User ID",
+        placeholder: "123456789012345678",
+        sensitive: false,
+        help: "Enable Developer Mode in Discord settings, then right-click your name to copy ID",
       },
     ],
   },
@@ -133,6 +147,7 @@ export function ChannelSetupStep({ onComplete }: { onComplete: () => void }) {
 
       // Validate all fields are filled
       for (const field of channel.fields) {
+        if (field.key === "userId") continue; // optional
         const val = getFieldValue(channel.id, field.key);
         if (!val.trim()) {
           setErrors((prev) => ({ ...prev, [channel.id]: `${field.label} is required` }));
@@ -149,9 +164,14 @@ export function ChannelSetupStep({ onComplete }: { onComplete: () => void }) {
 
       try {
         // Build channel config patch
-        const channelPatch: Record<string, string> = {};
+        const channelPatch: Record<string, unknown> = {};
+        const userId = getFieldValue(channel.id, "userId");
         for (const field of channel.fields) {
+          if (field.key === "userId") continue; // userId goes into allowFrom, not channel config
           channelPatch[field.key] = getFieldValue(channel.id, field.key);
+        }
+        if (userId.trim()) {
+          channelPatch.allowFrom = [userId.trim()];
         }
 
         await callRpc("config.patch", {
@@ -162,11 +182,12 @@ export function ChannelSetupStep({ onComplete }: { onComplete: () => void }) {
         // Wait for gateway restart, then probe
         await new Promise((r) => setTimeout(r, 3000));
         const status = await callRpc<{
-          channelAccounts: Record<string, { connected?: boolean }[]>;
+          channelAccounts: Record<string, { connected?: boolean; configured?: boolean; running?: boolean }[]>;
         }>("channels.status", { probe: true, timeoutMs: 8000 });
 
         const accounts = status?.channelAccounts?.[channel.id];
-        const isConnected = accounts?.[0]?.connected === true;
+        const account = accounts?.[0];
+        const isConnected = account?.configured === true || account?.running === true;
 
         if (isConnected) {
           setConnectedChannels((prev) => new Set([...prev, channel.id]));
