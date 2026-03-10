@@ -96,6 +96,7 @@ export function AgentChatWindow({
         id: String(i),
         role: msg.role,
         content: msg.content,
+        ...(msg.thinking ? { thinking: msg.thinking } : {}),
         ...(msg.toolUses?.length ? { toolUses: msg.toolUses } : {}),
       })),
     [chatMessages],

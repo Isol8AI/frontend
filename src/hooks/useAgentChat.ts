@@ -45,11 +45,24 @@ function friendlyError(raw: string): string {
  * Extract text from OpenClaw message content blocks.
  * chat.history returns content as an array of blocks: [{ type: "text", text: "..." }, ...]
  */
-function extractTextContent(content: Array<{ type: string; text?: string }>): string {
+interface ContentBlock {
+  type: string;
+  text?: string;
+  thinking?: string;
+}
+
+function extractTextContent(content: ContentBlock[]): string {
   return content
     .filter((block) => block.type === "text" || block.type === "output_text" || block.type === "input_text")
     .map((block) => block.text ?? "")
     .join("");
+}
+
+function extractThinkingContent(content: ContentBlock[]): string {
+  return content
+    .filter((block) => block.type === "thinking")
+    .map((block) => block.thinking ?? block.text ?? "")
+    .join("\n\n");
 }
 
 // =============================================================================
@@ -64,6 +77,7 @@ export interface ToolUse {
 export interface AgentMessage {
   role: "user" | "assistant";
   content: string;
+  thinking?: string;
   toolUses?: ToolUse[];
 }
 
@@ -81,6 +95,7 @@ interface InternalMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
+  thinking?: string;
   toolUses?: ToolUse[];
 }
 
@@ -198,11 +213,15 @@ export function useAgentChat(agentId: string | null): UseAgentChatReturn {
 
         const loaded: InternalMessage[] = historyResult.messages
           .filter((m: { role: string }) => m.role === "user" || m.role === "assistant")
-          .map((m: { role: string; content: Array<{ type: string; text?: string }> }, i: number) => ({
-            id: `history-${i}`,
-            role: m.role as "user" | "assistant",
-            content: extractTextContent(m.content),
-          }))
+          .map((m: { role: string; content: ContentBlock[] }, i: number) => {
+            const thinking = extractThinkingContent(m.content);
+            return {
+              id: `history-${i}`,
+              role: m.role as "user" | "assistant",
+              content: extractTextContent(m.content),
+              ...(thinking ? { thinking } : {}),
+            };
+          })
           .filter((m) => m.content.length > 0);
 
         if (loaded.length > 0) {
@@ -384,9 +403,10 @@ export function useAgentChat(agentId: string | null): UseAgentChatReturn {
 
   const externalMessages: AgentMessage[] = useMemo(
     () =>
-      messages.map(({ role, content, toolUses }) => ({
+      messages.map(({ role, content, thinking, toolUses }) => ({
         role,
         content,
+        ...(thinking ? { thinking } : {}),
         ...(toolUses?.length ? { toolUses } : {}),
       })),
     [messages],
