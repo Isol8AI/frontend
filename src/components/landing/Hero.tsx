@@ -43,8 +43,8 @@ export function Hero() {
           transition={{ duration: 1, ease: [0.16, 1, 0.3, 1] }}
           className="text-5xl md:text-8xl font-normal leading-[0.95] tracking-tighter text-white font-host"
         >
-          Meet your <br />
-          <span className="text-white/50">other half.</span>
+          Your AI <br />
+          <span className="text-white/50">right hand.</span>
         </motion.h1>
 
         <motion.p
@@ -53,8 +53,8 @@ export function Hero() {
           transition={{ duration: 1, delay: 0.2, ease: [0.16, 1, 0.3, 1] }}
           className="max-w-xl mx-auto text-lg text-white/60 font-dm leading-relaxed"
         >
-          An AI that lives in its own pod — with your personality, your memory,
-          and the skills to actually get things done.
+          A personal AI agent that handles the tasks you don&apos;t want to —
+          with persistent memory, custom personality, and real skills.
         </motion.p>
 
         <motion.div

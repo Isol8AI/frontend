@@ -134,7 +134,7 @@ export function Features() {
               <p className="text-lg text-white/60 font-dm leading-relaxed">
                 Browse and add skills to your pod — from web search and file
                 analysis to writing, coding, and custom workflows. The more you
-                add, the more capable your other half becomes.
+                add, the more capable your agent becomes.
               </p>
             </motion.div>
 
