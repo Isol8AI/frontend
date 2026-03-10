@@ -47,7 +47,7 @@ function friendlyError(raw: string): string {
  */
 function extractTextContent(content: Array<{ type: string; text?: string }>): string {
   return content
-    .filter((block) => block.type === "text" || block.type === "output_text")
+    .filter((block) => block.type === "text" || block.type === "output_text" || block.type === "input_text")
     .map((block) => block.text ?? "")
     .join("");
 }
@@ -202,7 +202,8 @@ export function useAgentChat(agentId: string | null): UseAgentChatReturn {
             id: `history-${i}`,
             role: m.role as "user" | "assistant",
             content: extractTextContent(m.content),
-          }));
+          }))
+          .filter((m) => m.content.length > 0);
 
         if (loaded.length > 0) {
           setMessages(loaded);
