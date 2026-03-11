@@ -10,6 +10,9 @@ import {
   EyeOff,
   QrCode,
   Scan,
+  LogOut,
+  RefreshCw,
+  AlertTriangle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useGatewayRpc, useGatewayRpcMutation } from "@/hooks/useGatewayRpc";
@@ -107,6 +110,7 @@ export function ChannelSetupStep({ onComplete }: { onComplete: () => void }) {
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [waMessage, setWaMessage] = useState<string | null>(null);
   const [waBusy, setWaBusy] = useState<string | null>(null);
+  const [waLoginFailed, setWaLoginFailed] = useState(false);
 
   const { data: configData } = useGatewayRpc<ConfigSnapshot>("config.get");
   const callRpc = useGatewayRpcMutation();
@@ -213,14 +217,16 @@ export function ChannelSetupStep({ onComplete }: { onComplete: () => void }) {
   // ---- WhatsApp QR flow ----
   const handleWhatsAppQr = async () => {
     setWaBusy("qr");
+    setWaLoginFailed(false);
     setErrors((prev) => {
       const next = { ...prev };
       delete next["whatsapp"];
       return next;
     });
     try {
+      // Use force: true if a previous login failed (stale creds on disk)
       const res = await callRpc<WebLoginResult>("web.login.start", {
-        force: false,
+        force: waLoginFailed,
         timeoutMs: 30000,
       });
       setQrDataUrl(res.qrDataUrl ?? null);
@@ -250,11 +256,48 @@ export function ChannelSetupStep({ onComplete }: { onComplete: () => void }) {
       if (res.connected) {
         setQrDataUrl(null);
         setWaMessage(null);
+        setWaLoginFailed(false);
         setConnectedChannels((prev) => new Set([...prev, "whatsapp"]));
         setExpandedChannel(null); // auto-collapse
       } else {
         setWaMessage(res.message ?? "Waiting timed out. Try again.");
       }
+    } catch (err) {
+      // Login failed — wipe bad creds so the health monitor doesn't crash-loop
+      setWaLoginFailed(true);
+      setQrDataUrl(null);
+      setWaMessage(null);
+      try {
+        await callRpc("channels.logout", { channel: "whatsapp" });
+      } catch {
+        // Logout cleanup is best-effort
+      }
+      setErrors((prev) => ({
+        ...prev,
+        whatsapp: err instanceof Error ? err.message : String(err),
+      }));
+    } finally {
+      setWaBusy(null);
+    }
+  };
+
+  const handleWhatsAppLogout = async () => {
+    setWaBusy("logout");
+    setErrors((prev) => {
+      const next = { ...prev };
+      delete next["whatsapp"];
+      return next;
+    });
+    try {
+      await callRpc("channels.logout", { channel: "whatsapp" });
+      setQrDataUrl(null);
+      setWaMessage("Session cleared. You can pair again.");
+      setWaLoginFailed(false);
+      setConnectedChannels((prev) => {
+        const next = new Set(prev);
+        next.delete("whatsapp");
+        return next;
+      });
     } catch (err) {
       setErrors((prev) => ({
         ...prev,
@@ -358,7 +401,19 @@ export function ChannelSetupStep({ onComplete }: { onComplete: () => void }) {
                       <p className="text-xs text-muted-foreground">
                         Scan a QR code with WhatsApp on your phone to pair.
                       </p>
-                      <div className="flex gap-2">
+
+                      {/* Error recovery banner */}
+                      {waLoginFailed && (
+                        <div className="flex items-start gap-2 rounded-md border border-yellow-500/30 bg-yellow-500/10 p-2.5">
+                          <AlertTriangle className="h-3.5 w-3.5 text-yellow-500 mt-0.5 shrink-0" />
+                          <div className="text-xs text-yellow-200 space-y-1">
+                            <p>Previous login failed. Session has been cleared.</p>
+                            <p className="text-yellow-200/60">Click &ldquo;Show QR Code&rdquo; to get a fresh code and try again.</p>
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="flex flex-wrap gap-2">
                         <Button
                           variant="outline"
                           size="sm"
@@ -367,10 +422,12 @@ export function ChannelSetupStep({ onComplete }: { onComplete: () => void }) {
                         >
                           {waBusy === "qr" ? (
                             <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                          ) : waLoginFailed ? (
+                            <RefreshCw className="h-3 w-3 mr-1" />
                           ) : (
                             <QrCode className="h-3 w-3 mr-1" />
                           )}
-                          Show QR Code
+                          {waLoginFailed ? "Retry QR Code" : "Show QR Code"}
                         </Button>
                         {qrDataUrl && (
                           <Button
@@ -385,6 +442,23 @@ export function ChannelSetupStep({ onComplete }: { onComplete: () => void }) {
                               <Scan className="h-3 w-3 mr-1" />
                             )}
                             I scanned it
+                          </Button>
+                        )}
+                        {/* Logout / clear session — manual recovery */}
+                        {(qrDataUrl || waLoginFailed || errors["whatsapp"]) && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={handleWhatsAppLogout}
+                            disabled={waBusy !== null}
+                            className="text-muted-foreground hover:text-red-400"
+                          >
+                            {waBusy === "logout" ? (
+                              <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                            ) : (
+                              <LogOut className="h-3 w-3 mr-1" />
+                            )}
+                            Clear session
                           </Button>
                         )}
                       </div>
