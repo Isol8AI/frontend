@@ -81,6 +81,9 @@ export interface AgentMessage {
   toolUses?: ToolUse[];
 }
 
+export const BOOTSTRAP_MESSAGE =
+  "Hello! Please run Bootstrap.md — I'd love to learn about everyday life use cases where you can be helpful and automate work for me.";
+
 export interface UseAgentChatReturn {
   messages: AgentMessage[];
   isStreaming: boolean;
@@ -89,6 +92,7 @@ export interface UseAgentChatReturn {
   clearMessages: () => void;
   isConnected: boolean;
   isLoadingHistory: boolean;
+  needsBootstrap: boolean;
 }
 
 interface InternalMessage {
@@ -108,7 +112,7 @@ interface InternalMessage {
 // =============================================================================
 
 const _messageCache = new Map<string, InternalMessage[]>();
-const _bootstrapSent = new Set<string>();
+const _needsBootstrap = new Set<string>();
 
 // =============================================================================
 // Hook
@@ -170,42 +174,8 @@ export function useAgentChat(agentId: string | null): UseAgentChatReturn {
         setHistoryLoadState("done");
 
         if (!historyResult?.messages?.length) {
-          // No history = first time. Trigger bootstrap auto-send.
-          // Guard: only bootstrap once per agent per page session.
-          if (_bootstrapSent.has(agentId)) return;
-          _bootstrapSent.add(agentId);
-
-          setTimeout(() => {
-            if (agentIdRef.current !== agentId || !isConnected) return;
-
-            // Silent send - only show assistant response, not user message
-            const assistantMsgId = `assistant-${crypto.randomUUID()}`;
-            currentAssistantIdRef.current = assistantMsgId;
-            streamContentRef.current = "";
-
-            setMessages((prev) => [
-              ...prev,
-              { id: assistantMsgId, role: "assistant", content: "" },
-            ]);
-            setIsStreaming(true);
-
-            try {
-              sendChat(agentId, "Hello! Please run Bootstrap.md — I'd love to learn about everyday life use cases where you can be helpful and automate work for me.");
-            } catch (err) {
-              const errorMessage = friendlyError(
-                err instanceof Error ? err.message : "Failed to send message",
-              );
-              setError(errorMessage);
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === assistantMsgId ? { ...m, content: errorMessage } : m,
-                ),
-              );
-              setIsStreaming(false);
-              currentAssistantIdRef.current = null;
-              streamContentRef.current = "";
-            }
-          }, 100);
+          // No history = first time. Flag for bootstrap suggestion in chat input.
+          _needsBootstrap.add(agentId);
           return;
         }
 
@@ -234,7 +204,7 @@ export function useAgentChat(agentId: string | null): UseAgentChatReturn {
         historyLoadedRef.current.add(agentId);
         setHistoryLoadState("done");
       });
-  }, [agentId, isConnected, sendReq, sendChat]);
+  }, [agentId, isConnected, sendReq]);
 
   // ---- Chat message handler ----
   // Dependencies are intentionally minimal ([onChatMessage]) because all
@@ -351,6 +321,9 @@ export function useAgentChat(agentId: string | null): UseAgentChatReturn {
 
       setError(null);
 
+      // Clear bootstrap flag once user sends their first message
+      if (agentIdRef.current) _needsBootstrap.delete(agentIdRef.current);
+
       const userMsgId = `user-${crypto.randomUUID()}`;
       const assistantMsgId = `assistant-${crypto.randomUUID()}`;
 
@@ -412,6 +385,13 @@ export function useAgentChat(agentId: string | null): UseAgentChatReturn {
     [messages],
   );
 
+  const needsBootstrap = !!(
+    agentId &&
+    _needsBootstrap.has(agentId) &&
+    messages.length === 0 &&
+    historyLoadState === "done"
+  );
+
   return {
     messages: externalMessages,
     isStreaming,
@@ -420,5 +400,6 @@ export function useAgentChat(agentId: string | null): UseAgentChatReturn {
     clearMessages,
     isConnected,
     isLoadingHistory,
+    needsBootstrap,
   };
 }

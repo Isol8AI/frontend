@@ -15,6 +15,7 @@ interface ChatInputProps {
   disabled?: boolean;
   centered?: boolean;
   isUploading?: boolean;
+  suggestedMessage?: string;
 }
 
 function formatFileSize(bytes: number): string {
@@ -23,7 +24,7 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
 }
 
-export function ChatInput({ onSend, disabled, centered, isUploading }: ChatInputProps) {
+export function ChatInput({ onSend, disabled, centered, isUploading, suggestedMessage }: ChatInputProps) {
   const [input, setInput] = React.useState("");
   const [pendingFiles, setPendingFiles] = React.useState<PendingFile[]>([]);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
@@ -38,6 +39,11 @@ export function ChatInput({ onSend, disabled, centered, isUploading }: ChatInput
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Tab" && suggestedMessage && !input) {
+      e.preventDefault();
+      setInput(suggestedMessage);
+      return;
+    }
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSend();
@@ -130,16 +136,24 @@ export function ChatInput({ onSend, disabled, centered, isUploading }: ChatInput
             <Paperclip className="h-4 w-4" />
           </Button>
 
-          <textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Ask anything"
-            rows={1}
-            className="flex-1 min-h-6 max-h-50 resize-none bg-transparent text-white placeholder:text-white/30 focus:outline-none text-sm leading-6 py-1"
-            disabled={isDisabled}
-            style={{ fieldSizing: "content" } as React.CSSProperties}
-          />
+          <div className="relative flex-1">
+            {suggestedMessage && !input && (
+              <div className="absolute inset-0 pointer-events-none text-white/20 text-sm leading-6 py-1 truncate">
+                {suggestedMessage}
+                <span className="ml-2 text-white/30 text-xs">[Tab]</span>
+              </div>
+            )}
+            <textarea
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder={suggestedMessage ? "" : "Ask anything"}
+              rows={1}
+              className="w-full min-h-6 max-h-50 resize-none bg-transparent text-white placeholder:text-white/30 focus:outline-none text-sm leading-6 py-1"
+              disabled={isDisabled}
+              style={{ fieldSizing: "content" } as React.CSSProperties}
+            />
+          </div>
 
           <Button
             size="icon"

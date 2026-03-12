@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChatInput } from "./ChatInput";
 import { ConnectionStatusBar } from "./ConnectionStatusBar";
 import { MessageList, MessageListHandle } from "./MessageList";
-import { useAgentChat } from "@/hooks/useAgentChat";
+import { useAgentChat, BOOTSTRAP_MESSAGE } from "@/hooks/useAgentChat";
 import { useApi } from "@/lib/api";
 import { Loader2 } from "lucide-react";
 
@@ -34,6 +34,7 @@ export function AgentChatWindow({
     sendMessage,
     clearMessages,
     isLoadingHistory,
+    needsBootstrap,
   } = useAgentChat(agentId);
 
   const api = useApi();
@@ -145,7 +146,13 @@ export function AgentChatWindow({
             </p>
           </div>
           <div className="w-full max-w-2xl">
-            <ChatInput onSend={handleSend} disabled={isTyping || !agentId} centered isUploading={isUploading} />
+            <ChatInput
+              onSend={handleSend}
+              disabled={isTyping || !agentId}
+              centered
+              isUploading={isUploading}
+              suggestedMessage={needsBootstrap ? BOOTSTRAP_MESSAGE : undefined}
+            />
           </div>
         </div>
       </div>
