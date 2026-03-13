@@ -24,8 +24,8 @@ export function useAgents() {
   const defaultId = data?.defaultId;
 
   const createAgent = useCallback(
-    async (name: string) => {
-      await callRpc("agents.create", { name });
+    async (params: { name: string; workspace: string; emoji?: string }) => {
+      await callRpc("agents.create", params);
       mutate();
     },
     [callRpc, mutate],

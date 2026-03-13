@@ -7,7 +7,7 @@ import {
   Bot,
   FileText,
   Wrench,
-
+  Plus,
   User,
   Save,
   AlertCircle,
@@ -15,6 +15,7 @@ import {
   ToggleLeft,
   ToggleRight,
 } from "lucide-react";
+import { AgentCreateForm } from "./AgentCreateForm";
 import { useGatewayRpc, useGatewayRpcMutation } from "@/hooks/useGatewayRpc";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -194,6 +195,7 @@ export function AgentsPanel() {
   const { data: rawData, error, isLoading, mutate } = useGatewayRpc<AgentsListResponse>("agents.list");
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<AgentTab>("overview");
+  const [showCreateForm, setShowCreateForm] = useState(false);
 
   if (isLoading) {
     return (
@@ -237,10 +239,28 @@ export function AgentsPanel() {
           <h2 className="text-lg font-semibold">Agents</h2>
           <p className="text-xs text-muted-foreground">{agents.length} configured.</p>
         </div>
-        <Button variant="ghost" size="sm" onClick={() => mutate()}>
-          <RefreshCw className="h-3.5 w-3.5" />
-        </Button>
+        <div className="flex items-center gap-1">
+          <Button variant="ghost" size="sm" onClick={() => mutate()}>
+            <RefreshCw className="h-3.5 w-3.5" />
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => setShowCreateForm(true)} disabled={showCreateForm}>
+            <Plus className="h-3.5 w-3.5 mr-1" />
+            Create Agent
+          </Button>
+        </div>
       </div>
+
+      {/* Create agent form */}
+      {showCreateForm && (
+        <AgentCreateForm
+          existingIds={agents.map((a) => a.id)}
+          onCreated={() => {
+            setShowCreateForm(false);
+            mutate();
+          }}
+          onCancel={() => setShowCreateForm(false)}
+        />
+      )}
 
       {/* Agent selector */}
       <div className="flex gap-1 flex-wrap">
